@@ -2,8 +2,8 @@ name: Scrape PriceCharting Grade Data
 
 on:
   schedule:
-    # Run every 4 days at 2 AM UTC
-    - cron: '0 2 */4 * *'
+    # Run every 5 days at 2 AM UTC
+    - cron: '0 2 */5 * *'
   push:
     branches:
       - main  # Run on push to main for testing

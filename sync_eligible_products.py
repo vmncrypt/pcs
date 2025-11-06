@@ -13,9 +13,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def fetch_all_eligible_products():
     """
-    Fetch ALL products that meet the criteria:
-    - market_price >= 15
-    - (rarity is not null OR number is not null)
+    Fetch ALL products that have is_eligible = true.
 
     Returns list of product IDs.
     """
@@ -24,17 +22,13 @@ def fetch_all_eligible_products():
     offset = 0
 
     print("🔍 Fetching all eligible products from database...")
-    print("   Using SQL filter: market_price >= 15 AND (rarity IS NOT NULL OR number IS NOT NULL)")
+    print("   Using SQL filter: is_eligible = true")
 
-    # Fetch with rarity not null first
-    print("\n   Phase 1: Fetching products with rarity not null...")
-    offset = 0
     while True:
         response = (
             supabase.table("products")
             .select("id")
-            .gte("market_price", 15)
-            .not_.is_("rarity", "null")
+            .eq("is_eligible", True)
             .range(offset, offset + limit - 1)
             .execute()
         )
@@ -46,39 +40,6 @@ def fetch_all_eligible_products():
             eligible_ids.append(product["id"])
 
         print(f"      Fetched {len(eligible_ids)} products so far...")
-
-        if len(response.data) < limit:
-            break
-
-        offset += limit
-
-    # Fetch with number not null (excluding those already added)
-    print(f"\n   Phase 2: Fetching products with number not null...")
-    offset = 0
-    phase2_count = 0
-    rarity_ids_set = set(eligible_ids)  # For deduplication
-
-    while True:
-        response = (
-            supabase.table("products")
-            .select("id")
-            .gte("market_price", 15)
-            .not_.is_("number", "null")
-            .range(offset, offset + limit - 1)
-            .execute()
-        )
-
-        if not response.data:
-            break
-
-        for product in response.data:
-            product_id = product["id"]
-            # Only add if not already in the list (avoid duplicates)
-            if product_id not in rarity_ids_set:
-                eligible_ids.append(product_id)
-                phase2_count += 1
-
-        print(f"      Added {phase2_count} additional products (total: {len(eligible_ids)})...")
 
         if len(response.data) < limit:
             break
@@ -167,8 +128,7 @@ def main():
     print("🚀 PriceCharting - Sync Eligible Products")
     print("=" * 60)
     print("\nCriteria:")
-    print("  • market_price >= $15")
-    print("  • rarity IS NOT NULL OR number IS NOT NULL")
+    print("  • is_eligible = true")
     print()
 
     # Fetch all eligible products
