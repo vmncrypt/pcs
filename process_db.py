@@ -205,8 +205,9 @@ def mark_product_completed(product_id):
 
 def process_product(product_data, verbose=True):
     """
-    Process a single product: scrape PriceCharting data and update database.
-    If pricecharting_url exists, use it directly. Otherwise search for the product.
+    Process a single product: scrape PriceCharting data.
+    Returns scraped data dict or None if error.
+    Does NOT write to database - that's done in batch by process_batch().
     """
     product_id = product_data.get("id")
     raw_name = product_data.get("name")
@@ -215,7 +216,9 @@ def process_product(product_data, verbose=True):
     pricecharting_url = product_data.get("pricecharting_url")
 
     if verbose:
-        print(f"📦 Processing: {raw_name} #{raw_number}")
+        # Handle null number display
+        number_display = f"#{raw_number}" if raw_number else "(no number)"
+        print(f"📦 Processing: {raw_name} {number_display}")
 
     try:
         # If we already have a pricecharting_url, use it directly
@@ -224,7 +227,10 @@ def process_product(product_data, verbose=True):
                 print(f"   Using existing URL: {pricecharting_url}")
 
             # Import scraping functions directly from main
-            from main import parse_sales_for_grade, parse_pop_report
+            from main import parse_sales_for_grade, parse_pop_report, fetch
+
+            # Fetch once and reuse for all parsing (saves 4 HTTP requests per product)
+            soup = fetch(pricecharting_url)
 
             result = {
                 "product_url": pricecharting_url,
@@ -241,54 +247,176 @@ def process_product(product_data, verbose=True):
             }
 
             for css_class, grade in grade_tabs.items():
-                sales = parse_sales_for_grade(pricecharting_url, css_class)
+                sales = parse_sales_for_grade(pricecharting_url, css_class, soup=soup)
                 result["grades"][grade] = sales
 
             # Scrape POP report
-            result["pop_report"] = parse_pop_report(pricecharting_url)
+            result["pop_report"] = parse_pop_report(pricecharting_url, soup=soup)
 
         else:
             # Need to search for the product first
             clean_name = parse_card_name(raw_name)
-            clean_number = parse_card_number(raw_number)
-            search_query = f"{clean_name} {clean_number}".strip()
+            clean_number = parse_card_number(raw_number) if raw_number else ""
+
+            # Build search query (only include number if it exists)
+            if clean_number:
+                search_query = f"{clean_name} {clean_number}".strip()
+            else:
+                search_query = clean_name.strip()
 
             if verbose:
                 print(f"   Search: {search_query} | Set: {group_name or 'N/A'}")
 
             result = scrape_pricecharting(search_query, test_mode=False, set_name=group_name, verbose=False)
 
-            # Save the discovered URL for future use
-            try:
-                supabase.table("products").update({
-                    "pricecharting_url": result["product_url"]
-                }).eq("id", product_id).execute()
-            except Exception as e:
-                print(f"   ⚠️  Could not save pricecharting_url: {e}")
-
-        # Save sales data to graded_sales table
-        if not save_graded_sales(product_id, result):
-            return False
-
-        # Update pop_count in products table
-        pop_count = result.get("pop_report", {})
-        if not update_product_data(product_id, pop_count):
-            return False
-
-        # Mark as completed
-        if not mark_product_completed(product_id):
-            return False
-
         if verbose:
-            # Count total sales across all grades
-            total_sales = sum(len(sales) for sales in result.get("grades", {}).values())
-            print(f"   ✅ Success: {total_sales} total sales, POP data: {len(pop_count)} grades")
+            # Count sales for each grade
+            grades_summary = []
+            for grade_label, sales in result.get("grades", {}).items():
+                grade_num = grade_label.split()[-1]  # Extract "7" from "PSA 7"
+                grades_summary.append(f"PSA {grade_num}: {len(sales)}")
 
-        return True
+            total_sales = sum(len(sales) for sales in result.get("grades", {}).values())
+            print(f"   ✅ Scraped: {total_sales} total sales [{', '.join(grades_summary)}], POP: {len(result.get('pop_report', {}))} grades")
+
+        return {
+            "product_id": product_id,
+            "result": result
+        }
 
     except Exception as e:
         print(f"   ❌ Error scraping: {e}")
-        return False
+        return None
+
+
+def process_batch(batch_data, verbose=True):
+    """
+    Process a batch of products: scrape all, then write all to database at once.
+    batch_data: list of dicts with "product_id" and "result" keys
+    Returns (success_count, failed_count)
+    """
+    if not batch_data:
+        return 0, 0
+
+    from datetime import datetime
+
+    # Prepare all database writes
+    all_sales_records = []
+    product_updates = []
+    progress_updates = []
+
+    for item in batch_data:
+        if item is None:
+            continue
+
+        product_id = item["product_id"]
+        result = item["result"]
+
+        # Collect sales records
+        grades = result.get("grades", {})
+        for grade_label, sales_list in grades.items():
+            if not isinstance(sales_list, list):
+                continue
+
+            try:
+                grade = int(grade_label.split()[-1])
+            except (ValueError, IndexError):
+                continue
+
+            for sale in sales_list:
+                if not isinstance(sale, dict):
+                    continue
+
+                date_str = sale.get('date')
+                price = sale.get('price')
+                url = sale.get('url')
+                title = sale.get('title', '')
+
+                if not date_str or price is None or not url:
+                    continue
+
+                # Parse date
+                try:
+                    parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date().isoformat()
+                except ValueError:
+                    try:
+                        parsed_date = datetime.strptime(date_str, "%b %d, %Y").date().isoformat()
+                    except ValueError:
+                        continue
+
+                all_sales_records.append({
+                    'product_id': product_id,
+                    'grade': grade,
+                    'sale_date': parsed_date,
+                    'price': float(price),
+                    'ebay_url': url,
+                    'title': title
+                })
+
+        # Collect product updates (pop_count and pricecharting_url)
+        pop_count = result.get("pop_report", {})
+        product_url = result.get("product_url")
+
+        product_updates.append({
+            "id": product_id,
+            "pop_count": pop_count,
+            "pricecharting_url": product_url
+        })
+
+        # Collect progress updates
+        progress_updates.append(product_id)
+
+    # Now write everything in batches
+    success_count = 0
+    failed_count = 0
+
+    # 1. Batch upsert all sales records
+    if all_sales_records:
+        try:
+            if verbose:
+                print(f"\n💾 Writing {len(all_sales_records)} sales records to database...")
+            supabase.table('graded_sales').upsert(
+                all_sales_records,
+                on_conflict='product_id,sale_date,price,ebay_url'
+            ).execute()
+        except Exception as e:
+            print(f"   ❌ Error batch saving sales: {e}")
+            failed_count = len(batch_data)
+            return 0, failed_count
+
+    # 2. Batch update products (pop_count and pricecharting_url)
+    if product_updates:
+        try:
+            if verbose:
+                print(f"💾 Updating {len(product_updates)} product records...")
+            for update in product_updates:
+                supabase.table("products").update({
+                    "pop_count": update["pop_count"],
+                    "pricecharting_url": update["pricecharting_url"]
+                }).eq("id", update["id"]).execute()
+        except Exception as e:
+            print(f"   ❌ Error batch updating products: {e}")
+
+    # 3. Batch mark as completed
+    if progress_updates:
+        try:
+            if verbose:
+                print(f"💾 Marking {len(progress_updates)} products as completed...")
+            for product_id in progress_updates:
+                supabase.table("product_grade_progress").update({
+                    "completed": True,
+                    "updated_at": "now()"
+                }).eq("product_id", product_id).execute()
+            success_count = len(progress_updates)
+        except Exception as e:
+            print(f"   ❌ Error batch updating progress: {e}")
+            failed_count = len(batch_data)
+            return 0, failed_count
+
+    if verbose:
+        print(f"✅ Batch write complete: {success_count} products saved\n")
+
+    return success_count, failed_count
 
 
 def main():
@@ -299,13 +427,13 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Process PriceCharting grade data for products")
-    parser.add_argument("--batch-size", type=int, default=100, help="Number of products to process per batch")
+    parser.add_argument("--batch-size", type=int, default=50, help="Number of products to fetch/write per batch")
     parser.add_argument("--max-products", type=int, default=None, help="Maximum number of products to process (for testing)")
-    parser.add_argument("--delay", type=float, default=1.0, help="Delay in seconds between requests")
+    parser.add_argument("--delay", type=float, default=2.0, help="Delay in seconds between scrape requests")
     args = parser.parse_args()
 
     print("🚀 Starting PriceCharting Grade Data Processor")
-    print(f"   Batch size: {args.batch_size}")
+    print(f"   Batch size: {args.batch_size} (scrape {args.batch_size}, then write all at once)")
     print(f"   Delay between requests: {args.delay}s")
     if args.max_products:
         print(f"   Max products to process: {args.max_products}")
@@ -330,9 +458,10 @@ def main():
             print("✅ No more incomplete products found!")
             break
 
-        print(f"📊 Processing {len(products)} products in this batch\n")
+        print(f"📊 Scraping {len(products)} products in this batch\n")
 
-        # Process each product in the batch
+        # Scrape all products in batch (collect data, don't write yet)
+        batch_results = []
         for i, product_data in enumerate(products, 1):
             # Check max limit
             if args.max_products and total_processed >= args.max_products:
@@ -340,23 +469,23 @@ def main():
 
             print(f"[{total_processed + 1}] ", end="")
 
-            success = process_product(product_data, verbose=True)
-
-            if success:
-                total_success += 1
-            else:
-                total_failed += 1
+            scraped_data = process_product(product_data, verbose=True)
+            batch_results.append(scraped_data)
 
             total_processed += 1
 
-            # Add delay between requests to be respectful
-            if i < len(products):  # Don't delay after the last item
+            # Add delay between scrape requests to be respectful
+            if i < len(products) and (not args.max_products or total_processed < args.max_products):
                 time.sleep(args.delay)
 
             print()
 
+        # Write all scraped data to database at once
+        success, failed = process_batch(batch_results, verbose=True)
+        total_success += success
+        total_failed += failed
+
         # Move to next batch (offset stays 0 because completed items are filtered out)
-        # But if we're doing max_products testing, we might want to stop
         if args.max_products and total_processed >= args.max_products:
             break
 

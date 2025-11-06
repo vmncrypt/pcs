@@ -81,11 +81,3 @@ jobs:
         # This processes all 6,768 products in one batch
         timeout 19800s python -u process_db.py --batch-size 100 --delay 2.0 || true
 
-    - name: Show final summary
-      if: always()
-      env:
-        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        PYTHONUNBUFFERED: 1
-      run: |
-        python -u check_progress.py

@@ -99,9 +99,10 @@ def find_best_set_match(rows, set_name):
     return None
 
 
-def parse_sales_for_grade(product_url, grade_class):
+def parse_sales_for_grade(product_url, grade_class, soup=None):
     """Parse completed listings for a specific PSA grade (correct tab isolation)."""
-    soup = fetch(product_url)
+    if soup is None:
+        soup = fetch(product_url)
 
     # Find all divs with this class, then filter out the tab button
     # The content section has ONLY the grade_class, not the 'tab' class
@@ -144,10 +145,11 @@ def parse_sales_for_grade(product_url, grade_class):
 
 
 
-def parse_pop_report(product_url):
+def parse_pop_report(product_url, soup=None):
     """Return PSA POP count in dictionary format: {grade: count}"""
-    url = product_url + "#population-report"
-    soup = fetch(url)
+    if soup is None:
+        url = product_url + "#population-report"
+        soup = fetch(url)
 
     pop_table = soup.select_one("table.population tbody tr")
 
@@ -173,6 +175,9 @@ def scrape_pricecharting(query, test_mode=False, set_name=None, verbose=True):
     if verbose:
         print(f"✅ Product page found: {product_url}")
 
+    # Fetch the page once and reuse for all parsing
+    soup = fetch(product_url)
+
     result = {"product_url": product_url, "grades": {}, "pop_report": {}}
 
     grade_tabs = {
@@ -183,7 +188,7 @@ def scrape_pricecharting(query, test_mode=False, set_name=None, verbose=True):
     }
 
     for css_class, grade in grade_tabs.items():
-        sales = parse_sales_for_grade(product_url, css_class)
+        sales = parse_sales_for_grade(product_url, css_class, soup=soup)
         result["grades"][grade] = sales
 
         if test_mode:
@@ -194,7 +199,7 @@ def scrape_pricecharting(query, test_mode=False, set_name=None, verbose=True):
                 sample = sales[0]
                 print(f"Sample sale: {sample['date']} | {sample['price_raw']} | {sample['url']}")
 
-    result["pop_report"] = parse_pop_report(product_url)
+    result["pop_report"] = parse_pop_report(product_url, soup=soup)
 
     if test_mode:
         print("\nPOP Report (grade -> count):")
