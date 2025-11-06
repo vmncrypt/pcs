@@ -2,6 +2,7 @@ services:
   - type: web
     name: pricecharting-scraper-api
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn api:app
     envVars:
