@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: pricecharting-scraper-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn api:app
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.9.16
