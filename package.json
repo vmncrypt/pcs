@@ -1,0 +1,17 @@
+{
+  "name": "pricecharting-backfill",
+  "version": "1.0.0",
+  "description": "Backfill scripts for PriceCharting data",
+  "type": "module",
+  "scripts": {
+    "backfill": "tsx backfill_graded_prices.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "tsx": "^4.7.0"
+  }
+}

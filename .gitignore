@@ -41,6 +41,11 @@ env/
 .env
 .env.local
 
+# Node.js
+node_modules/
+package-lock.json
+*.tsbuildinfo
+
 # Testing
 .pytest_cache/
 .coverage
