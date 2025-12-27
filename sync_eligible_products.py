@@ -13,22 +13,26 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def fetch_all_eligible_products():
     """
-    Fetch ALL products that have is_eligible = true.
+    Fetch ALL products that meet eligibility criteria:
+    - market_price >= 15
+    - AND (rarity IS NOT NULL OR number IS NOT NULL)
 
     Returns list of product IDs.
     """
-    eligible_ids = []
+    print("🔍 Fetching all eligible products from database...")
+    print("   Using SQL filter: market_price >= 15 AND (rarity OR number exists)")
+
+    # Use RPC function or fetch all and filter in Python
+    # Since Supabase doesn't support OR with IS NOT NULL easily, we'll fetch and filter
+    eligible_ids = set()
     limit = 1000
     offset = 0
-
-    print("🔍 Fetching all eligible products from database...")
-    print("   Using SQL filter: is_eligible = true")
 
     while True:
         response = (
             supabase.table("products")
-            .select("id")
-            .eq("is_eligible", True)
+            .select("id, market_price, rarity, number")
+            .gte("market_price", 15)
             .range(offset, offset + limit - 1)
             .execute()
         )
@@ -36,18 +40,21 @@ def fetch_all_eligible_products():
         if not response.data:
             break
 
+        # Filter in Python: must have rarity OR number
         for product in response.data:
-            eligible_ids.append(product["id"])
+            if product.get("rarity") is not None or product.get("number") is not None:
+                eligible_ids.add(product["id"])
 
-        print(f"      Fetched {len(eligible_ids)} products so far...")
+        print(f"      Fetched {len(eligible_ids)} eligible products so far...")
 
         if len(response.data) < limit:
             break
 
         offset += limit
 
-    print(f"\n✅ Found {len(eligible_ids):,} eligible products total")
-    return eligible_ids
+    eligible_list = list(eligible_ids)
+    print(f"\n✅ Found {len(eligible_list):,} eligible products total")
+    return eligible_list
 
 
 def sync_progress_table(eligible_product_ids):
@@ -128,7 +135,8 @@ def main():
     print("🚀 PriceCharting - Sync Eligible Products")
     print("=" * 60)
     print("\nCriteria:")
-    print("  • is_eligible = true")
+    print("  • market_price >= $15")
+    print("  • rarity IS NOT NULL OR number IS NOT NULL")
     print()
 
     # Fetch all eligible products
