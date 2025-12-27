@@ -105,112 +105,45 @@ CREATE INDEX IF NOT EXISTS idx_graded_prices_product_grade ON graded_prices(prod
 -- ============================================================
 
 -- Insert test groups
-INSERT INTO groups (id, name) VALUES
-  ('11111111-1111-1111-1111-111111111111', 'Scarlet & Violet: 151'),
-  ('22222222-2222-2222-2222-222222222222', 'Scarlet & Violet: Obsidian Flames'),
-  ('33333333-3333-3333-3333-333333333333', 'Sword & Shield: Evolving Skies')
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO groups (name) VALUES
+  ('Scarlet & Violet: 151'),
+  ('Scarlet & Violet: Obsidian Flames'),
+  ('Sword & Shield: Evolving Skies')
+ON CONFLICT DO NOTHING;
 
--- Insert test products (high-value cards that are likely on PriceCharting)
-INSERT INTO products (id, name, number, variant_key, group_id, market_price, rarity) VALUES
-  -- 151 set
-  (
-    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-    'Charizard ex',
-    '199',
-    'sv3pt5-199',
-    '11111111-1111-1111-1111-111111111111',
-    399.99,
-    'Special Illustration Rare'
-  ),
-  (
-    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    'Mew ex',
-    '151',
-    'sv3pt5-151',
-    '11111111-1111-1111-1111-111111111111',
-    89.99,
-    'Double Rare'
-  ),
-  (
-    'cccccccc-cccc-cccc-cccc-cccccccccccc',
-    'Erika''s Invitation',
-    '196',
-    'sv3pt5-196',
-    '11111111-1111-1111-1111-111111111111',
-    65.00,
-    'Special Illustration Rare'
-  ),
+-- Get group IDs for reference
+DO $$
+DECLARE
+  group_151_id UUID;
+  group_obsidian_id UUID;
+  group_evolving_id UUID;
+BEGIN
+  -- Get or create group IDs
+  SELECT id INTO group_151_id FROM groups WHERE name = 'Scarlet & Violet: 151' LIMIT 1;
+  SELECT id INTO group_obsidian_id FROM groups WHERE name = 'Scarlet & Violet: Obsidian Flames' LIMIT 1;
+  SELECT id INTO group_evolving_id FROM groups WHERE name = 'Sword & Shield: Evolving Skies' LIMIT 1;
 
-  -- Obsidian Flames set
-  (
-    'dddddddd-dddd-dddd-dddd-dddddddddddd',
-    'Charizard ex',
-    '125',
-    'sv3-125',
-    '22222222-2222-2222-2222-222222222222',
-    125.00,
-    'Double Rare'
-  ),
-  (
-    'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
-    'Mew ex',
-    '151',
-    'sv3-151',
-    '22222222-2222-2222-2222-222222222222',
-    45.00,
-    'Ultra Rare'
-  ),
+  -- Insert test products (high-value cards that are likely on PriceCharting)
+  INSERT INTO products (name, number, variant_key, group_id, market_price, rarity) VALUES
+    -- 151 set
+    ('Charizard ex', '199', 'sv3pt5-199', group_151_id, 399.99, 'Special Illustration Rare'),
+    ('Mew ex', '151', 'sv3pt5-151', group_151_id, 89.99, 'Double Rare'),
+    ('Erika''s Invitation', '196', 'sv3pt5-196', group_151_id, 65.00, 'Special Illustration Rare'),
 
-  -- Evolving Skies set
-  (
-    'ffffffff-ffff-ffff-ffff-ffffffffffff',
-    'Umbreon VMAX',
-    '215',
-    'swsh7-215',
-    '33333333-3333-3333-3333-333333333333',
-    299.99,
-    'Alternate Art'
-  ),
-  (
-    'gggggggg-gggg-gggg-gggg-gggggggggggg',
-    'Rayquaza VMAX',
-    '218',
-    'swsh7-218',
-    '33333333-3333-3333-3333-333333333333',
-    175.00,
-    'Alternate Art'
-  ),
-  (
-    'hhhhhhhh-hhhh-hhhh-hhhh-hhhhhhhhhhhh',
-    'Glaceon VMAX',
-    '209',
-    'swsh7-209',
-    '33333333-3333-3333-3333-333333333333',
-    85.00,
-    'Alternate Art'
-  ),
+    -- Obsidian Flames set
+    ('Charizard ex', '125', 'sv3-125', group_obsidian_id, 125.00, 'Double Rare'),
+    ('Mew ex', '151', 'sv3-151', group_obsidian_id, 45.00, 'Ultra Rare'),
 
-  -- Products below $15 threshold (should NOT be scraped)
-  (
-    'iiiiiiii-iiii-iiii-iiii-iiiiiiiiiiii',
-    'Pikachu',
-    '025',
-    'sv3pt5-025',
-    '11111111-1111-1111-1111-111111111111',
-    5.00,
-    'Common'
-  ),
-  (
-    'jjjjjjjj-jjjj-jjjj-jjjj-jjjjjjjjjjjj',
-    'Charmander',
-    '004',
-    'sv3pt5-004',
-    '11111111-1111-1111-1111-111111111111',
-    3.50,
-    'Common'
-  )
-ON CONFLICT (id) DO NOTHING;
+    -- Evolving Skies set
+    ('Umbreon VMAX', '215', 'swsh7-215', group_evolving_id, 299.99, 'Alternate Art'),
+    ('Rayquaza VMAX', '218', 'swsh7-218', group_evolving_id, 175.00, 'Alternate Art'),
+    ('Glaceon VMAX', '209', 'swsh7-209', group_evolving_id, 85.00, 'Alternate Art'),
+
+    -- Products below $15 threshold (should NOT be scraped)
+    ('Pikachu', '025', 'sv3pt5-025', group_151_id, 5.00, 'Common'),
+    ('Charmander', '004', 'sv3pt5-004', group_151_id, 3.50, 'Common')
+  ON CONFLICT (variant_key) DO NOTHING;
+END $$;
 
 -- ============================================================
 -- Verification Queries
