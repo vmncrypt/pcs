@@ -19,8 +19,9 @@ jobs:
           HEALTH_URL: ${{ secrets.RENDER_HEALTH_URL }}
         run: |
           if [ -z "$HEALTH_URL" ]; then
-            echo "RENDER_HEALTH_URL secret is not configured."
-            exit 1
+            echo "⚠️  RENDER_HEALTH_URL secret is not configured yet."
+            echo "This is expected if Render hasn't been set up. Skipping..."
+            exit 0
           fi
 
           # Keep the call under 20 seconds while waking the instance if needed.
@@ -28,5 +29,5 @@ jobs:
             --connect-timeout 5 \
             --max-time 15 \
             "$HEALTH_URL" \
-            && echo "Render instance responded quickly." \
-            || echo "Health check timed out or failed; instance may still be waking."
+            && echo "✅ Render instance responded quickly." \
+            || echo "⚠️  Health check timed out or failed; instance may still be waking."
