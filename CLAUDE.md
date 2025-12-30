@@ -172,6 +172,12 @@ Located in `backfill_graded_prices.ts:calculateGradedMarketPrice()`
   2. `scrape-batch-1` - Scrapes all products with 2s delay (~4.3 hours)
   3. `backfill-graded-prices` - Calculates market prices (1 hour timeout)
 
+**update_prices.yml** - Price update workflow
+- Trigger: Every Monday at 3 AM UTC (before scraping), manual dispatch
+- Updates product prices from BankTCG source data
+- Re-syncs eligible products based on new prices
+- Automatically handles cards that cross the $15 threshold
+
 **keep_render_warm.yml** - Render instance warmup
 - Trigger: Every 10 minutes
 - Pings `RENDER_HEALTH_URL` to prevent cold starts
