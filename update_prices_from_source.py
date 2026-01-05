@@ -2,13 +2,17 @@
 """
 Update product prices from BankTCG source data
 
-This script:
-1. Reads the latest pokemon-cards-final-data-with-ids.json
-2. Updates market_price in Supabase for existing products
-3. Adds new products that didn't exist before
-4. Re-syncs eligible products based on new prices
+⚠️  LOCAL USE ONLY - This script requires access to local BankTCG files
+    Do not run in GitHub Actions or CI/CD environments
 
-Run this periodically (e.g., weekly) to keep prices up-to-date
+This script:
+1. Reads the latest pokemon-cards-final-data-with-ids.json from BankTCG app
+2. Updates market_price in Supabase for existing products
+3. Detects cards crossing the $15 eligibility threshold
+4. Updates prices to reflect latest market data
+
+Run this locally when you update your BankTCG app data and want to sync
+those price changes back to Supabase.
 """
 
 import os

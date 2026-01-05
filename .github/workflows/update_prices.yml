@@ -1,10 +1,10 @@
 name: Update Prices from Source Data
 
 on:
-  schedule:
-    # Run every Monday at 3 AM UTC (before the scraping job)
-    - cron: '0 3 * * 1'
-  workflow_dispatch:  # Allow manual trigger
+  # Disabled automatic runs - this script requires local BankTCG files
+  # schedule:
+  #   - cron: '0 3 * * 1'
+  workflow_dispatch:  # Manual trigger only (will fail without local files)
 
 jobs:
   update-prices:
