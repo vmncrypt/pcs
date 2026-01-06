@@ -8,23 +8,26 @@ PriceCharting PSA Grade Scraper - An automated system that scrapes PSA graded ca
 
 ## Commands
 
-### TypeScript/Node.js Commands
-
-```bash
-# Run backfill script to calculate graded prices from sales data
-npm run backfill
-# or
-tsx backfill_graded_prices.ts
-```
-
 ### Python Commands
 
 ```bash
 # Install dependencies
 pip install -r requirements.txt
 
+# Import Pokemon data from BankTCG source
+python import_pokemon_data.py
+
+# Export Supabase data to BankTCG app format (with images)
+python export_to_app_format.py
+
+# Import missing sets as placeholders
+python import_missing_sets.py
+
 # Sync eligible products to progress table
 python sync_eligible_products.py
+
+# Update prices from BankTCG source (LOCAL ONLY)
+python update_prices_from_source.py
 
 # Process incomplete products (scrape graded sales)
 python process_db.py --batch-size 100 --delay 2.0
@@ -33,7 +36,7 @@ python process_db.py --batch-size 100 --delay 2.0
 python api.py
 
 # Test scraping a single product
-python main.py "Pikachu VMAX 44" --test
+python scrape_single_product.py "sv3pt5-199"
 ```
 
 ### Environment Variables
@@ -47,23 +50,41 @@ Required for all scripts:
 ### Data Flow Pipeline
 
 ```
-Database Products (filtered)
+BankTCG Source Data (pokemon-cards-base-data.json)
+    ↓
+import_pokemon_data.py (initial import)
+    ↓
+Supabase Database (products, groups)
+    ↓
+sync_eligible_products.py (filters market_price >= $15)
     ↓
 product_grade_progress (tracks completion status)
     ↓
 GitHub Actions (every 5 days)
     ├─ Job 1: sync_eligible_products.py (sync products)
-    ├─ Job 2: process_db.py (scrape PriceCharting)
-    └─ Job 3: backfill_graded_prices.ts (calculate prices)
+    └─ Job 2: process_db.py (scrape PriceCharting)
     ↓
 graded_sales table (individual sales)
     ↓
 graded_prices table (computed market prices)
+    ↓
+export_to_app_format.py (export with images)
+    ↓
+BankTCG App (pokemon-cards-final-data-with-ids.json)
 ```
 
 ### Database Schema
 
+**groups** - Pokemon sets/series
+- `name` - Set name (e.g., "Pokemon Base Set", "Pokemon Celebrations")
+- Foreign key for products
+
 **products** - Main product table
+- `group_id` - References groups.id
+- `variant_key` - Unique identifier (e.g., "sv3pt5-199")
+- `name`, `number` - Card name and number
+- `market_price` - Current market price (used for eligibility filtering)
+- `rarity` - Estimated rarity (Common, Uncommon, Rare, Ultra Rare)
 - `pricecharting_url` - Cached PriceCharting URL (saves search time on re-scrapes)
 - `pop_count` - JSONB field storing PSA population report (grades 1-10)
 
@@ -78,11 +99,38 @@ graded_prices table (computed market prices)
 
 **graded_prices** - Computed market prices
 - `product_id, grade` - Composite unique key
-- `market_price` - Calculated from recent sales (see pricing logic below)
+- `market_price` - Calculated from recent sales
 - `sample_size` - Number of sales used in calculation
 - Set to `-1` when no sales data available
 
 ### Key Components
+
+**import_pokemon_data.py** - Initial data import
+- Reads BankTCG JSON data (pokemon-cards-base-data.json)
+- Creates groups and products in Supabase
+- Deduplicates by variant_key
+- Estimates rarity based on price
+
+**export_to_app_format.py** - Export to app format
+- Fetches data from Supabase (products, groups, graded_prices)
+- Reads image URLs from original BankTCG source data
+- Exports to BankTCG app JSON format with images
+- Includes grade9 and psa10 prices from scraping
+
+**import_missing_sets.py** - Import placeholder sets
+- Compares enriched series data with Supabase
+- Creates empty groups for missing sets
+- Ready for future scraping or data import
+
+**sync_eligible_products.py** - Product syncing
+- Filters products: `market_price >= $15 AND (rarity OR number exists)`
+- Syncs to `product_grade_progress` with `completed=false`
+
+**update_prices_from_source.py** - Price sync (LOCAL ONLY)
+- Reads BankTCG source data
+- Updates market_price in Supabase
+- Detects cards crossing $15 threshold
+- ⚠️ Requires local BankTCG files - do not run in GitHub Actions
 
 **main.py** - Core scraper module
 - `search_product()` - Searches PriceCharting, handles redirects and fuzzy set matching
@@ -96,23 +144,17 @@ graded_prices table (computed market prices)
 - Saves sales to `graded_sales` via upsert (duplicates ignored)
 - Updates `products.pop_count` with population data
 - Marks products as completed
+- Computes graded market prices after scraping
+
+**scrape_single_product.py** - Single product scraper
+- Scrapes a single product by variant_key
+- Useful for testing or one-off scrapes
 
 **api.py** - Flask REST API
 - Deployed on Render.com (kept warm via GitHub Actions cron)
 - `POST /api/scrape/<variant_key>` - Scrape single product by variant_key
 - `GET /health` - Health check endpoint
 - CORS enabled for frontend access
-
-**backfill_graded_prices.ts** - Price calculator
-- Reads `product_grade_progress` table
-- Fetches all sales for each product from `graded_sales`
-- Calculates market prices using pricing logic (see below)
-- Upserts into `graded_prices` table
-- Marks progress as incomplete for next scrape cycle
-
-**sync_eligible_products.py** - Product syncing
-- Filters products: `market_price >= $15 AND (rarity OR number exists)`
-- Syncs to `product_grade_progress` with `completed=false`
 
 ### PriceCharting Scraping Logic
 
@@ -147,7 +189,7 @@ graded_prices table (computed market prices)
 
 ### Market Price Calculation Logic
 
-Located in `backfill_graded_prices.ts:calculateGradedMarketPrice()`
+Located in `process_db.py:compute_graded_prices()`
 
 **Algorithm:**
 1. Filter sales by specific grade
@@ -167,16 +209,13 @@ Located in `backfill_graded_prices.ts:calculateGradedMarketPrice()`
 
 **scrape_grades.yml** - Main scraping workflow
 - Trigger: Every 5 days at 2 AM UTC, push to main, manual dispatch
-- 3 sequential jobs:
+- 2 sequential jobs:
   1. `sync` - Syncs eligible products (30 min timeout)
-  2. `scrape-batch-1` - Scrapes all products with 2s delay (~4.3 hours)
-  3. `backfill-graded-prices` - Calculates market prices (1 hour timeout)
+  2. `scrape-batch-1` - Scrapes all products with 2s delay, computes prices (~4.3 hours)
 
-**update_prices.yml** - Price update workflow
-- Trigger: Every Monday at 3 AM UTC (before scraping), manual dispatch
-- Updates product prices from BankTCG source data
-- Re-syncs eligible products based on new prices
-- Automatically handles cards that cross the $15 threshold
+**update_prices.yml** - Price update workflow (DISABLED)
+- Manual trigger only (requires local BankTCG files)
+- Not meant to run in GitHub Actions
 
 **keep_render_warm.yml** - Render instance warmup
 - Trigger: Every 10 minutes
@@ -199,10 +238,26 @@ Located in `backfill_graded_prices.ts:calculateGradedMarketPrice()`
 
 ## Development Notes
 
+### Data Import/Export Workflow
+
+1. **Initial Setup:**
+   - `import_pokemon_data.py` - Import BankTCG source data to Supabase
+   - `import_missing_sets.py` - Add placeholder sets for future scraping
+
+2. **Scraping:**
+   - `sync_eligible_products.py` - Mark products for scraping (market_price >= $15)
+   - GitHub Actions runs `process_db.py` every 5 days
+
+3. **Export:**
+   - `export_to_app_format.py` - Export Supabase data back to BankTCG app format
+   - Includes images from original source
+   - Adds graded pricing data (grade9, psa10) from scraping
+
 ### Deduplication Strategy
 
 The system uses database unique constraints for deduplication:
 - `graded_sales` has unique constraint on `(product_id, sale_date, price, ebay_url)`
+- `products` has unique constraint on `variant_key`
 - Upsert operations automatically skip duplicates
 - No application-level duplicate checking needed
 
@@ -229,3 +284,10 @@ The system uses database unique constraints for deduplication:
 - Failed products automatically marked incomplete
 - Retried on next run (every 5 days)
 - No manual intervention required
+
+### Image Handling
+
+- Images are NOT stored in Supabase
+- `export_to_app_format.py` reads images from original BankTCG source data
+- Matches cards by variant_key to include correct image URLs
+- 100% image coverage for cards that exist in source data
