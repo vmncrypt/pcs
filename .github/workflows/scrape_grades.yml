@@ -81,30 +81,4 @@ jobs:
         # This processes all 6,768 products in one batch
         timeout 19800s python -u process_db.py --batch-size 100 --delay 2.0 || true
 
-  # Job 3: Backfill graded prices (runs after scraping)
-  backfill-graded-prices:
-    needs: scrape-batch-1
-    runs-on: ubuntu-latest
-    timeout-minutes: 60  # 1 hour timeout
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-
-    - name: Install dependencies
-      run: |
-        npm install -g tsx
-        npm install @supabase/supabase-js dotenv
-
-    - name: Run backfill script
-      env:
-        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-      run: |
-        tsx backfill_graded_prices.ts
 
