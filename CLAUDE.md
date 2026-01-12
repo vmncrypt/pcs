@@ -14,6 +14,17 @@ PriceCharting PSA Grade Scraper - An automated system that scrapes PSA graded ca
 # Install dependencies
 pip install -r requirements.txt
 
+# === NEW SET MANAGEMENT ===
+# Add a new Pokemon set when it releases
+python add_new_set.py "Pokemon Scarlet & Violet - Surging Sparks"
+
+# List all existing sets
+python add_new_set.py --list
+
+# Automated scraping (may be blocked by Cloudflare)
+python scrape_new_sets.py --all --output scraped_data.json
+
+# === DATA IMPORT/EXPORT ===
 # Import Pokemon data from BankTCG source
 python import_pokemon_data.py
 
@@ -23,6 +34,7 @@ python export_to_app_format.py
 # Import missing sets as placeholders
 python import_missing_sets.py
 
+# === SCRAPING OPERATIONS ===
 # Sync eligible products to progress table
 python sync_eligible_products.py
 
@@ -32,11 +44,12 @@ python update_prices_from_source.py
 # Process incomplete products (scrape graded sales)
 python process_db.py --batch-size 100 --delay 2.0
 
-# Run Flask API locally
-python api.py
-
 # Test scraping a single product
 python scrape_single_product.py "sv3pt5-199"
+
+# === API ===
+# Run Flask API locally
+python api.py
 ```
 
 ### Environment Variables
@@ -44,6 +57,19 @@ python scrape_single_product.py "sv3pt5-199"
 Required for all scripts:
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_KEY` - Supabase service role key (not anon key)
+
+## Adding New Sets
+
+When a new Pokemon TCG set releases:
+
+1. **Add the set:** `python add_new_set.py "Set Name"`
+2. **Import cards:** `python import_pokemon_data.py` (if you have updated JSON)
+3. **Sync eligible:** `python sync_eligible_products.py`
+4. **Done!** GitHub Actions handles graded sales scraping automatically
+
+See [NEW_SETS.md](NEW_SETS.md) for detailed guide.
+
+**Note:** Bulbapedia/PriceCharting may block automated scraping. Manual process is fastest and most reliable.
 
 ## Architecture
 
