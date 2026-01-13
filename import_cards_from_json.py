@@ -133,7 +133,8 @@ def import_from_json(json_path):
                 "variant_key": variant_key,
                 "group_id": group_id,
                 "market_price": float(price) if price else 0,
-                "rarity": rarity
+                "rarity": rarity,
+                "image": image
             }
 
         products_to_insert = list(products_dict.values())

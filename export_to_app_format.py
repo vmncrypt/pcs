@@ -100,8 +100,8 @@ def export_to_app_format():
     for group in groups:
         print(f"\n📦 Processing: {group['name']}")
 
-        # Fetch products for this group
-        products_response = supabase.table("products").select("id, variant_key, name, number, market_price").eq("group_id", group['id']).execute()
+        # Fetch products for this group (including image column)
+        products_response = supabase.table("products").select("id, variant_key, name, number, market_price, image").eq("group_id", group['id']).execute()
         products = products_response.data
 
         if not products:
@@ -136,9 +136,10 @@ def export_to_app_format():
                 "psa10": float(prices.get(10, 0))
             }
 
-            # Add image URL if available
-            if variant_key in image_lookup:
-                card["image"] = image_lookup[variant_key]
+            # Add image URL (prefer Supabase, fallback to original data)
+            image_url = product.get('image') or image_lookup.get(variant_key)
+            if image_url:
+                card["image"] = image_url
 
             cards.append(card)
 
