@@ -11,6 +11,10 @@ Usage:
 import os
 import sys
 from supabase import create_client
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL")

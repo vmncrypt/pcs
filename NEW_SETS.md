@@ -18,7 +18,37 @@ python add_new_set.py --list
 
 ### 2. Import Cards
 
-**Option A: From BankTCG Source Data**
+**Option A: Copy/Paste from PriceCharting (Recommended)**
+
+This is the easiest way to get all cards from a new set:
+
+1. **Go to the PriceCharting series page** (e.g., https://www.pricecharting.com/game/pokemon-phantasmal-flames)
+
+2. **Open browser DevTools:**
+   - Right-click on the card table → "Inspect Element"
+   - Find the `<tbody>` element in the HTML tree
+   - Right-click `<tbody>` → "Copy" → "Copy outerHTML"
+
+3. **Save to a file:**
+   ```bash
+   # Paste into a file
+   nano new_set.html
+   # (Paste the HTML, save with Ctrl+X)
+   ```
+
+4. **Convert HTML to JSON:**
+   ```bash
+   python3 convert_html_to_json.py new_set.html "Pokemon Scarlet & Violet - Surging Sparks"
+   ```
+
+5. **Import to Supabase:**
+   ```bash
+   python3 import_cards_from_json.py new_set_cards.json
+   ```
+
+Done! All cards are now in Supabase with prices, numbers, and images.
+
+**Option B: From BankTCG Source Data**
 
 If you have updated `pokemon-cards-base-data.json`:
 
@@ -28,7 +58,7 @@ python import_pokemon_data.py
 
 This imports all cards from the JSON file, including the new set.
 
-**Option B: Manual SQL (for placeholder sets)**
+**Option C: Manual SQL (for placeholder sets)**
 
 ```sql
 -- In Supabase SQL Editor

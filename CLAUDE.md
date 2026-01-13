@@ -21,6 +21,12 @@ python add_new_set.py "Pokemon Scarlet & Violet - Surging Sparks"
 # List all existing sets
 python add_new_set.py --list
 
+# Convert PriceCharting HTML to JSON (copy/paste tbody from browser)
+python convert_html_to_json.py new_set.html "Pokemon Scarlet & Violet - Surging Sparks"
+
+# Import cards from converted JSON
+python import_cards_from_json.py new_set_cards.json
+
 # Automated scraping (may be blocked by Cloudflare)
 python scrape_new_sets.py --all --output scraped_data.json
 
