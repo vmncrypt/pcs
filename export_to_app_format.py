@@ -15,6 +15,10 @@ import os
 import json
 import re
 from supabase import create_client
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Supabase connection
 SUPABASE_URL = os.getenv("SUPABASE_URL")

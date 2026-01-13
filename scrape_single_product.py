@@ -5,6 +5,10 @@ import argparse
 from datetime import datetime
 from supabase import create_client, Client
 from main import scrape_pricecharting, parse_sales_for_grade, parse_pop_report, fetch
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Supabase connection
 SUPABASE_URL = os.getenv("SUPABASE_URL")

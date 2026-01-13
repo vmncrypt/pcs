@@ -2,6 +2,10 @@ import os
 import re
 from supabase import create_client, Client
 from main import scrape_pricecharting
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Supabase connection
 SUPABASE_URL = os.getenv("SUPABASE_URL")
