@@ -74,43 +74,18 @@ def get_existing_groups():
         logger.error(f"Error fetching existing groups: {e}")
         return {}
 
-def get_next_id():
-    """Get the next available ID for the groups table."""
-    try:
-        # Fetch the group with the highest ID
-        response = (
-            supabase.table("groups")
-            .select("id")
-            .order("id", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if response.data:
-            return response.data[0]["id"] + 1
-        return 1
-    except Exception as e:
-        logger.error(f"Error fetching max ID: {e}")
-        # Identify if we should fail or default. Choosing to raise/fail to be safe.
-        raise
-
 def sync_sets(scraped_sets):
     """Sync scraped sets to the groups table."""
     existing_groups = get_existing_groups()
     existing_names = set(existing_groups.keys())
-    
-    new_sets = []
-    updates = []
-    
-    # Needs to be determined at insert time to handle concurrency mostly,
-    # but for this script we can just fetch once if running solo.
-    next_id = 0
-    
-    # Pre-calculate new sets so we know how many IDs we need
+
     sets_to_add = []
+    updates = []
+
     for s in scraped_sets:
         name = s["name"]
         url = s["set_url"]
-        
+
         if name not in existing_names:
             sets_to_add.append(s)
         elif existing_groups[name] != url:
@@ -119,22 +94,20 @@ def sync_sets(scraped_sets):
                 "name": name,
                 "set_url": url
             })
-            
-    # 1. Insert New Sets
+
+    # 1. Insert New Sets (let Supabase auto-generate UUIDs)
     if sets_to_add:
         try:
-            next_id = get_next_id()
-            logger.info(f"Adding {len(sets_to_add)} new groups starting from ID {next_id}...")
-            
+            logger.info(f"Adding {len(sets_to_add)} new groups...")
+
             payloads = []
-            for i, s in enumerate(sets_to_add):
+            for s in sets_to_add:
                 payloads.append({
-                    "id": next_id + i,
                     "name": s["name"],
                     "category_id": CHINESE_SET_CATEGORY_ID,
                     "set_url": s["set_url"]
                 })
-                
+
             supabase.table("groups").insert(payloads).execute()
             logger.info("✅ Successfully added new groups.")
         except Exception as e:
