@@ -138,24 +138,32 @@ def join_data(output_path, include_sales=True):
 
             # Helper to get price for a grade (handles int/string keys)
             # Falls back to latest sale price if no computed price exists
-            def get_grade_price(grade_num):
-                price = (
-                    prices.get(grade_num) or
-                    prices.get(str(grade_num)) or
-                    prices.get(f'PSA {grade_num}') or
-                    0
-                )
+            def get_grade_price(grade_key):
+                # Try various key formats
+                if isinstance(grade_key, int):
+                    price = (
+                        prices.get(grade_key) or
+                        prices.get(str(grade_key)) or
+                        prices.get(f'PSA {grade_key}') or
+                        0
+                    )
+                    sale_keys = [grade_key, str(grade_key)]
+                else:
+                    # String key like "Ungraded"
+                    price = prices.get(grade_key) or 0
+                    sale_keys = [grade_key]
+
                 # Convert -1 (no data) to 0
                 if price == -1:
                     price = 0
 
                 # If no computed price, use latest sale price
                 if not price and include_sales:
-                    grade_sales = (
-                        product_sales.get(grade_num) or
-                        product_sales.get(str(grade_num)) or
-                        []
-                    )
+                    grade_sales = []
+                    for key in sale_keys:
+                        grade_sales = product_sales.get(key) or []
+                        if grade_sales:
+                            break
                     price = get_latest_sale_price(grade_sales)
 
                 return float(price) if price else 0.0
@@ -163,6 +171,7 @@ def join_data(output_path, include_sales=True):
             card = {
                 "card": card_str,
                 "price": float(market_price),
+                "ungraded": get_grade_price("Ungraded"),
                 "psa7": get_grade_price(7),
                 "psa8": get_grade_price(8),
                 "grade9": get_grade_price(9),
@@ -197,6 +206,7 @@ def join_data(output_path, include_sales=True):
     # Summary
     total_cards = sum(len(g['cards']) for g in output_data)
     cards_with_images = sum(1 for g in output_data for c in g['cards'] if 'image' in c)
+    cards_with_ungraded = sum(1 for g in output_data for c in g['cards'] if c['ungraded'] > 0)
     cards_with_psa7 = sum(1 for g in output_data for c in g['cards'] if c['psa7'] > 0)
     cards_with_psa8 = sum(1 for g in output_data for c in g['cards'] if c['psa8'] > 0)
     cards_with_grade9 = sum(1 for g in output_data for c in g['cards'] if c['grade9'] > 0)
@@ -216,6 +226,7 @@ def join_data(output_path, include_sales=True):
     print(f"Sets: {len(output_data)}")
     print(f"Total cards: {total_cards:,}")
     print(f"Cards with images: {cards_with_images:,} ({cards_with_images/total_cards*100:.1f}%)")
+    print(f"Cards with Ungraded prices: {cards_with_ungraded:,} ({cards_with_ungraded/total_cards*100:.1f}%)")
     print(f"Cards with PSA 7 prices: {cards_with_psa7:,} ({cards_with_psa7/total_cards*100:.1f}%)")
     print(f"Cards with PSA 8 prices: {cards_with_psa8:,} ({cards_with_psa8/total_cards*100:.1f}%)")
     print(f"Cards with PSA 9 prices: {cards_with_grade9:,} ({cards_with_grade9/total_cards*100:.1f}%)")

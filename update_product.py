@@ -140,6 +140,7 @@ def scrape_and_save(product, verbose=True):
 
             # Grade mapping
             grade_tabs = {
+                "completed-auctions-used": "Ungraded",  # Raw/ungraded sales
                 "completed-auctions-grade-twenty": "BGS 10 Black Label",
                 "completed-auctions-grade-nineteen": "CGC 10 Pristine",
                 "completed-auctions-manual-only": "PSA 10",

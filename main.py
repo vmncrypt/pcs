@@ -187,6 +187,7 @@ def scrape_pricecharting(query, test_mode=False, set_name=None, verbose=True):
 
     # Map CSS class to grade string representation
     grade_tabs = {
+        "completed-auctions-used": "Ungraded",  # Raw/ungraded sales
         "completed-auctions-grade-twenty": "BGS 10 Black Label",
         "completed-auctions-grade-nineteen": "CGC 10 Pristine",
         "completed-auctions-manual-only": "PSA 10",
