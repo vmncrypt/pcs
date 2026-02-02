@@ -21,6 +21,7 @@ import json
 def parse_price(price_text):
     """
     Parse price from various formats:
+    - A 142.75 -> 142.75 (Australian dollars)
     - SGD720.08 -> 720.08
     - $45.99 -> 45.99
     - 1,234.56 -> 1234.56
@@ -28,8 +29,9 @@ def parse_price(price_text):
     if not price_text:
         return 0.0
 
-    # Remove currency symbols and commas
-    clean = re.sub(r'[SGD$,]', '', price_text.strip())
+    # Remove currency symbols, letters, and commas
+    # Handle formats like "A 142.75", "SGD720.08", "$45.99"
+    clean = re.sub(r'[A-Za-z$,]', '', price_text.strip())
 
     try:
         return float(clean)
@@ -81,8 +83,8 @@ def convert_html_to_json(html_path, series_name, output_path=None):
 
             # Get prices (PriceCharting columns)
             # used_price = Ungraded
-            # cib_price = PSA 7
-            # new_price = PSA 9/10
+            # cib_price = PSA 9
+            # new_price = PSA 10
 
             used_price_cell = row.find('td', class_='used_price')
             cib_price_cell = row.find('td', class_='cib_price')

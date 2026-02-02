@@ -110,10 +110,14 @@ def export_to_app_format():
 
         print(f"   Found {len(products)} products")
 
-        # Fetch graded prices for all products in this group
+        # Fetch graded prices for all products in this group (batch to avoid URL length limits)
         product_ids = [p['id'] for p in products]
-        prices_response = supabase.table("graded_prices").select("product_id, grade, market_price").in_("product_id", product_ids).execute()
-        prices_data = prices_response.data
+        prices_data = []
+        batch_size = 200
+        for i in range(0, len(product_ids), batch_size):
+            batch_ids = product_ids[i:i + batch_size]
+            prices_response = supabase.table("graded_prices").select("product_id, grade, market_price").in_("product_id", batch_ids).execute()
+            prices_data.extend(prices_response.data)
 
         # Build price lookup: {product_id: {grade: price}}
         price_lookup = {}

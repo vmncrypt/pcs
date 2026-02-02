@@ -15,6 +15,11 @@ def fetch(url):
     return BeautifulSoup(html.text, "lxml")
 
 
+def strip_query_params(url):
+    """Strip query parameters from URL (everything after '?')."""
+    return url.split('?')[0] if url else url
+
+
 def search_product(query, set_name=None):
     """Returns URL of product page (either direct redirect or best match from search results)."""
     # Clean set name: remove everything after ":"
@@ -26,7 +31,7 @@ def search_product(query, set_name=None):
 
     # Check if we were redirected to a product page (URL contains /game/)
     if '/game/' in response.url:
-        return response.url
+        return strip_query_params(response.url)
 
     soup = BeautifulSoup(response.text, "lxml")
 
@@ -52,17 +57,17 @@ def search_product(query, set_name=None):
             # href is already a full URL
             href = best_match["href"]
             if href.startswith("http"):
-                return href
+                return strip_query_params(href)
             else:
-                return BASE_URL + href
+                return strip_query_params(BASE_URL + href)
 
     # Otherwise grab first result
     link = rows[0].select_one("td.title a")
     href = link["href"]
     if href.startswith("http"):
-        return href
+        return strip_query_params(href)
     else:
-        return BASE_URL + href
+        return strip_query_params(BASE_URL + href)
 
 
 def find_best_set_match(rows, set_name):
@@ -180,19 +185,34 @@ def scrape_pricecharting(query, test_mode=False, set_name=None, verbose=True):
 
     result = {"product_url": product_url, "grades": {}, "pop_report": {}}
 
+    # Map CSS class to grade string representation
     grade_tabs = {
-        "completed-auctions-cib": "PSA 7",
-        "completed-auctions-new": "PSA 8",
+        "completed-auctions-grade-twenty": "BGS 10 Black Label",
+        "completed-auctions-grade-nineteen": "CGC 10 Pristine",
+        "completed-auctions-manual-only": "PSA 10",
+        "completed-auctions-loose-and-box": "BGS 10",
+        "completed-auctions-grade-seventeen": "CGC 10",
+        "completed-auctions-grade-eighteen": "SGC 10",
+        "completed-auctions-grade-twenty-one": "TAG 10",
+        "completed-auctions-grade-twenty-two": "ACE 10",
+        "completed-auctions-box-only": "PSA 9.5",
         "completed-auctions-graded": "PSA 9",
-        "completed-auctions-manual-only": "PSA 10"
+        "completed-auctions-new": "PSA 8",
+        "completed-auctions-cib": "PSA 7",
+        "completed-auctions-grade-six": "PSA 6",
+        "completed-auctions-grade-five": "PSA 5",
+        "completed-auctions-grade-four": "PSA 4",
+        "completed-auctions-grade-three": "PSA 3",
+        "completed-auctions-box-and-manual": "PSA 2",
+        "completed-auctions-loose-and-manual": "PSA 1"
     }
 
-    for css_class, grade in grade_tabs.items():
+    for css_class, grade_label in grade_tabs.items():
         sales = parse_sales_for_grade(product_url, css_class, soup=soup)
-        result["grades"][grade] = sales
+        result["grades"][grade_label] = sales
 
         if test_mode:
-            print(f"\n--- {grade} ---")
+            print(f"\n--- {grade_label} ---")
             print(f"Total sales: {len(sales)}")
 
             if len(sales) > 0:

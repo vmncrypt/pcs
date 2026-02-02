@@ -1,3 +1,38 @@
+Complete Workflow for New Sets
+
+  # 1. Add the set
+  python3 add_new_set.py "Pokemon New Set Name"
+
+  # 2. Copy HTML from PriceCharting in browser (DevTools → <tbody> outerHTML)
+  nano new-set.html  # Paste and save
+
+  # 3. Convert to JSON
+  python3 convert_html_to_json.py new-set.html "Pokemon New Set Name"
+
+  # 4. Import to Supabase (with images!)
+  python3 import_cards_from_json.py new-set_cards.json
+
+  # 5. Sync eligible products
+  python3 sync_eligible_products.py
+
+  # 6. Export to app
+  python3 export_to_app_format.py
+
+  # 7. Update the image resolution
+  in final_data_with_ids.json update any occurence of /60.jpg with /240.jpg
+
+
+  # 8. Update the app db version
+  increment by 1
+  // stores/gameDataStore.ts
+    const CURRENT_VERSION = '1.0.3';
+
+
+
+  # Done! Your app has the new set with all cards and images
+
+
+
 # PriceCharting PSA Grade Scraper
 
 Automated system that scrapes PSA graded card sales data from PriceCharting every 5 days and stores it in Supabase.
@@ -111,9 +146,6 @@ pip install -r requirements.txt
 export SUPABASE_URL="https://your-project.supabase.co"
 export SUPABASE_KEY="your-anon-key"
 
-# Test single product
-python main.py "Pikachu VMAX 44" --test
-
 # Sync eligible products
 python sync_eligible_products.py
 
@@ -166,7 +198,7 @@ git push -u origin main
 
 **Secret 2:**
 - Name: `SUPABASE_KEY`
-- Value: Your Supabase anon key (find it in Supabase → Settings → API)
+- Value: Your Supabase anony key (find it in Supabase → Settings → API)
 
 #### Step 4: Enable GitHub Actions
 
