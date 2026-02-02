@@ -4,8 +4,11 @@
 # 1. Download all tables from Supabase
 python3 export_supabase_db.py
 
-# 2. Join into app format (includes PSA 7, 8, 9, 10 prices)
+# 2. Join into app format (includes PSA 7, 8, 9, 10 prices + sales history)
 python3 join_local_data.py --output pokemon-cards-final-data-with-ids.json
+
+# 2b. (Optional) Smaller file without sales history (4MB vs 30MB)
+python3 join_local_data.py --no-sales --output pokemon-cards-final-data-with-ids.json
 
 # 3. (Optional) Update image resolution
 # In the output file, replace /60.jpg with /240.jpg
@@ -14,12 +17,59 @@ python3 join_local_data.py --output pokemon-cards-final-data-with-ids.json
 # Increment CURRENT_VERSION by 1
 ```
 
-This creates 5 JSON files from Supabase:
+### Exported Files from Supabase
 - `supabase_groups.json` - All sets/series
 - `supabase_products.json` - All cards
 - `supabase_graded_prices.json` - Computed PSA prices
-- `supabase_graded_sales.json` - Individual sales history
+- `supabase_graded_sales.json` - Individual sales history (286k+ records)
 - `supabase_product_grade_progress.json` - Scraping progress
+
+### Output Format (with sales history)
+
+```json
+{
+  "card": "Mew #25",
+  "price": 43.01,
+  "psa7": 31.55,
+  "psa8": 33.17,
+  "grade9": 44.18,
+  "psa10": 141.13,
+  "image": "https://...",
+  "sales": {
+    "7": [{"date": "2025-01-15", "price": 30.00}, ...],
+    "8": [{"date": "2025-01-16", "price": 35.00}, ...],
+    "9": [{"date": "2025-01-17", "price": 45.00}, ...],
+    "10": [{"date": "2025-01-18", "price": 150.00}, ...]
+  }
+}
+```
+
+**Note:** If `graded_prices` doesn't have a computed price, it falls back to the latest sale price.
+
+### Using Sales Data for Charts
+
+```javascript
+// Example: Get PSA 10 sales for line chart
+const card = data.cards.find(c => c.card === "Mew #25");
+const psa10Sales = card.sales?.["10"] || [];
+
+const chartData = {
+  labels: psa10Sales.map(s => s.date),
+  datasets: [{
+    label: 'PSA 10',
+    data: psa10Sales.map(s => s.price)
+  }]
+};
+
+// Combine all grades for multi-line chart
+const grades = ["7", "8", "9", "10"];
+const datasets = grades.map(grade => ({
+  label: `PSA ${grade}`,
+  data: (card.sales?.[grade] || []).map(s => ({ x: s.date, y: s.price }))
+}));
+```
+
+**Tip:** For mobile apps, consider using `--no-sales` for the main data file and loading sales history on-demand per card via API.
 
 ---
 

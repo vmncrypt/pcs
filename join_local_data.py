@@ -51,6 +51,17 @@ def build_sales_history(graded_sales):
     return sales_map
 
 
+def get_latest_sale_price(sales_list):
+    """
+    Get the latest sale price from sales data.
+    Sales are already sorted by date ascending, so last item is most recent.
+    Returns 0 if no sales.
+    """
+    if not sales_list:
+        return 0.0
+    return sales_list[-1]['price']
+
+
 def join_data(output_path, include_sales=True):
     """Join all tables into app format."""
     print("🔄 Joining Supabase data into app format...")
@@ -121,10 +132,12 @@ def join_data(output_path, include_sales=True):
             else:
                 card_str = name
 
-            # Get graded prices
+            # Get graded prices and sales for this product
             prices = price_map.get(product_id, {})
+            product_sales = sales_map.get(product_id, {}) if include_sales else {}
 
             # Helper to get price for a grade (handles int/string keys)
+            # Falls back to latest sale price if no computed price exists
             def get_grade_price(grade_num):
                 price = (
                     prices.get(grade_num) or
@@ -132,8 +145,20 @@ def join_data(output_path, include_sales=True):
                     prices.get(f'PSA {grade_num}') or
                     0
                 )
-                # Convert -1 (no data) to 0 for app
-                return 0 if price == -1 else float(price) if price else 0.0
+                # Convert -1 (no data) to 0
+                if price == -1:
+                    price = 0
+
+                # If no computed price, use latest sale price
+                if not price and include_sales:
+                    grade_sales = (
+                        product_sales.get(grade_num) or
+                        product_sales.get(str(grade_num)) or
+                        []
+                    )
+                    price = get_latest_sale_price(grade_sales)
+
+                return float(price) if price else 0.0
 
             card = {
                 "card": card_str,
