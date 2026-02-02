@@ -1,6 +1,10 @@
 import os
 from collections import defaultdict
+from dotenv import load_dotenv
 from supabase import create_client
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Supabase connection
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -18,7 +22,7 @@ LOG_PREFIX_EXCLUDED = "[EXCLUDED]"
 
 def fetch_all_eligible_products():
     """
-    Fetch ALL products that have is_eligible = true.
+    Fetch ALL products that have market_price >= 15.
     Uses cursor-based pagination with id > last_id to ensure all rows are fetched.
     
     Returns list of product dicts with id, name, and pricecharting_url.
@@ -28,14 +32,14 @@ def fetch_all_eligible_products():
     last_id = ""  # Empty string sorts before all UUIDs
 
     print("🔍 Fetching all eligible products from database...")
-    print("   Using SQL filter: is_eligible = true")
+    print("   Using SQL filter: market_price >= 15")
     print("   Using cursor-based pagination (id > last_id)")
 
     while True:
         query = (
             supabase.table("products")
-            .select("id, name, pricecharting_url, variant_key, finish")
-            .eq("is_eligible", True)
+            .select("id, name, pricecharting_url, variant_key, market_price, rarity, number")
+            .gte("market_price", 15)
             .order("id", desc=False)
             .limit(limit)
         )
@@ -113,8 +117,7 @@ def detect_url_collisions(products):
             print(f"{LOG_PREFIX_COLLISION} Products sharing this URL ({len(prods)}):")
             for p in prods:
                 variant = p.get('variant_key', 'N/A')
-                finish = p.get('finish', 'N/A')
-                print(f"{LOG_PREFIX_EXCLUDED}   - {p['name']} | variant_key: {variant} | finish: {finish} | id: {p['id']}")
+                print(f"{LOG_PREFIX_EXCLUDED}   - {p['name']} | variant_key: {variant} | id: {p['id']}")
         
         print(f"\n{LOG_PREFIX_COLLISION} Summary: {total_excluded} products excluded due to URL collisions")
         print(f"{'='*60}\n")
@@ -229,11 +232,9 @@ def write_collisions_to_file(collisions, filename="url_collisions.txt"):
             f.write(f"Products sharing this URL ({len(prods)}):\n")
             for p in prods:
                 variant = p.get('variant_key', 'N/A')
-                finish = p.get('finish', 'N/A')
                 f.write(f"  - {p['name']}\n")
                 f.write(f"    ID: {p['id']}\n")
                 f.write(f"    variant_key: {variant}\n")
-                f.write(f"    finish: {finish}\n")
             f.write("\n")
     
     print(f"\n📄 Collision report written to: {filename}")
@@ -260,7 +261,7 @@ def main():
     if args.local:
         print("   Mode: LOCAL DEVELOPMENT (collisions will be saved to file)")
     print("\nCriteria:")
-    print("  • is_eligible = true")
+    print("  • market_price >= 15")
     print("  • No pricecharting_url collision with other products")
     print()
 
