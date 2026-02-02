@@ -71,3 +71,7 @@ test_*.py
 
 # OS
 Thumbs.db
+
+# Exported data files
+supabase_*.json
+pokemon-cards-joined.json

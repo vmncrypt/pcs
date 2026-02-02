@@ -1,35 +1,59 @@
-Complete Workflow for New Sets
+## Quick Start: Export Data for App
 
-  # 1. Add the set
-  python3 add_new_set.py "Pokemon New Set Name"
+```bash
+# 1. Download all tables from Supabase
+python3 export_supabase_db.py
 
-  # 2. Copy HTML from PriceCharting in browser (DevTools → <tbody> outerHTML)
-  nano new-set.html  # Paste and save
+# 2. Join into app format (includes PSA 7, 8, 9, 10 prices)
+python3 join_local_data.py --output pokemon-cards-final-data-with-ids.json
 
-  # 3. Convert to JSON
-  python3 convert_html_to_json.py new-set.html "Pokemon New Set Name"
+# 3. (Optional) Update image resolution
+# In the output file, replace /60.jpg with /240.jpg
 
-  # 4. Import to Supabase (with images!)
-  python3 import_cards_from_json.py new-set_cards.json
+# 4. Update app db version in stores/gameDataStore.ts
+# Increment CURRENT_VERSION by 1
+```
 
-  # 5. Sync eligible products
-  python3 sync_eligible_products.py
+This creates 5 JSON files from Supabase:
+- `supabase_groups.json` - All sets/series
+- `supabase_products.json` - All cards
+- `supabase_graded_prices.json` - Computed PSA prices
+- `supabase_graded_sales.json` - Individual sales history
+- `supabase_product_grade_progress.json` - Scraping progress
 
-  # 6. Export to app
-  python3 export_to_app_format.py
+---
 
-  # 7. Update the image resolution
-  in final_data_with_ids.json update any occurence of /60.jpg with /240.jpg
+## Complete Workflow for Adding New Sets
 
+```bash
+# 1. Add the set
+python3 add_new_set.py "Pokemon New Set Name"
 
-  # 8. Update the app db version
-  increment by 1
-  // stores/gameDataStore.ts
-    const CURRENT_VERSION = '1.0.3';
+# 2. Copy HTML from PriceCharting in browser (DevTools → <tbody> outerHTML)
+nano new-set.html  # Paste and save
 
+# 3. Convert to JSON
+python3 convert_html_to_json.py new-set.html "Pokemon New Set Name"
 
+# 4. Import to Supabase (with images!)
+python3 import_cards_from_json.py new-set_cards.json
 
-  # Done! Your app has the new set with all cards and images
+# 5. Sync eligible products
+python3 sync_eligible_products.py
+
+# 6. Export to app
+python3 export_to_app_format.py
+
+# 7. Update the image resolution
+# In final_data_with_ids.json replace /60.jpg with /240.jpg
+
+# 8. Update the app db version
+# Increment CURRENT_VERSION in stores/gameDataStore.ts
+```
+
+Done! Your app has the new set with all cards and images.
+
+---
 
 
 
