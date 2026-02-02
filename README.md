@@ -218,7 +218,7 @@ git push -u origin main
 
 **Secret 1:**
 - Name: `SUPABASE_URL`
-- Value: `https://vekeomccryizsbpapdcy.supabase.co` (your Supabase URL)
+- Value: Your Supabase project URL (e.g., `https://your-project.supabase.co`)
 
 **Secret 2:**
 - Name: `SUPABASE_KEY`
