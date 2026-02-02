@@ -24,7 +24,34 @@ def load_json(filename):
     return data
 
 
-def join_data(output_path):
+def build_sales_history(graded_sales):
+    """
+    Build sales history lookup: {product_id: {grade: [{date, price}, ...]}}
+    Sorted by date ascending for charting.
+    """
+    sales_map = defaultdict(lambda: defaultdict(list))
+
+    for sale in graded_sales:
+        product_id = sale.get('product_id')
+        grade = sale.get('grade')
+        sale_date = sale.get('sale_date')
+        price = sale.get('price')
+
+        if product_id and grade and sale_date and price is not None:
+            sales_map[product_id][grade].append({
+                "date": sale_date,
+                "price": float(price)
+            })
+
+    # Sort each grade's sales by date
+    for product_id in sales_map:
+        for grade in sales_map[product_id]:
+            sales_map[product_id][grade].sort(key=lambda x: x['date'])
+
+    return sales_map
+
+
+def join_data(output_path, include_sales=True):
     """Join all tables into app format."""
     print("🔄 Joining Supabase data into app format...")
     print("=" * 60)
@@ -33,6 +60,11 @@ def join_data(output_path):
     groups = load_json("supabase_groups.json")
     products = load_json("supabase_products.json")
     graded_prices = load_json("supabase_graded_prices.json")
+
+    if include_sales:
+        graded_sales = load_json("supabase_graded_sales.json")
+    else:
+        graded_sales = []
 
     # Build lookup maps
     print("\n🔗 Building lookup maps...")
@@ -49,6 +81,13 @@ def join_data(output_path):
         market_price = p['market_price']
         price_map[product_id][grade] = market_price
     print(f"   Graded prices: {len(price_map)} products with prices")
+
+    # Product ID -> {grade: [{date, price}, ...]}
+    if include_sales:
+        sales_map = build_sales_history(graded_sales)
+        print(f"   Sales history: {len(sales_map)} products with sales")
+    else:
+        sales_map = {}
 
     # Group products by group_id
     print("\n📦 Grouping products by set...")
@@ -109,6 +148,12 @@ def join_data(output_path):
             if image:
                 card["image"] = image
 
+            # Add sales history for charting (grouped by grade)
+            if include_sales and product_id in sales_map:
+                product_sales = sales_map[product_id]
+                if product_sales:
+                    card["sales"] = dict(product_sales)
+
             cards.append(card)
 
         # Sort cards by price descending
@@ -131,6 +176,14 @@ def join_data(output_path):
     cards_with_psa8 = sum(1 for g in output_data for c in g['cards'] if c['psa8'] > 0)
     cards_with_grade9 = sum(1 for g in output_data for c in g['cards'] if c['grade9'] > 0)
     cards_with_psa10 = sum(1 for g in output_data for c in g['cards'] if c['psa10'] > 0)
+    cards_with_sales = sum(1 for g in output_data for c in g['cards'] if 'sales' in c)
+    total_sale_records = sum(
+        len(sales_list)
+        for g in output_data
+        for c in g['cards']
+        if 'sales' in c
+        for sales_list in c['sales'].values()
+    )
 
     print("\n" + "=" * 60)
     print("✅ Join Complete!")
@@ -142,6 +195,9 @@ def join_data(output_path):
     print(f"Cards with PSA 8 prices: {cards_with_psa8:,} ({cards_with_psa8/total_cards*100:.1f}%)")
     print(f"Cards with PSA 9 prices: {cards_with_grade9:,} ({cards_with_grade9/total_cards*100:.1f}%)")
     print(f"Cards with PSA 10 prices: {cards_with_psa10:,} ({cards_with_psa10/total_cards*100:.1f}%)")
+    if include_sales:
+        print(f"Cards with sales history: {cards_with_sales:,} ({cards_with_sales/total_cards*100:.1f}%)")
+        print(f"Total sale records: {total_sale_records:,}")
     print(f"Output: {output_path}")
     print("=" * 60)
 
@@ -150,9 +206,11 @@ def main():
     parser = argparse.ArgumentParser(description="Join Supabase exports into app format")
     parser.add_argument("--output", "-o", default="pokemon-cards-joined.json",
                         help="Output file path (default: pokemon-cards-joined.json)")
+    parser.add_argument("--no-sales", action="store_true",
+                        help="Exclude sales history (smaller file size)")
     args = parser.parse_args()
 
-    join_data(args.output)
+    join_data(args.output, include_sales=not args.no_sales)
 
 
 if __name__ == "__main__":
