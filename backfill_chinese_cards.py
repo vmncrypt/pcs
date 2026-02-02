@@ -4,10 +4,14 @@ import time
 import re
 from datetime import datetime
 import logging
+from dotenv import load_dotenv
 from supabase import create_client, Client
 import requests
 from bs4 import BeautifulSoup
 import json
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

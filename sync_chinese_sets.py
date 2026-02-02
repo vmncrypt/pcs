@@ -1,12 +1,12 @@
 import os
 import logging
+from dotenv import load_dotenv
 from supabase import create_client, Client
-
-# Import scraping logic from our existing script
-# We'll need to slightly modify or import the functions from scrape_pokemon_sets.py
-# For now, I'll redundancy for safety/isolation but ideally we refactor.
 import requests
 from bs4 import BeautifulSoup
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
