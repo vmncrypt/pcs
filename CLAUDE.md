@@ -51,6 +51,12 @@ python backfill_new_sets.py --dry-run
 python backfill_new_sets.py --set-id <group_id>
 python backfill_new_sets.py --max-sets 5
 
+# === IMAGE BACKFILL ===
+# Backfill images for products that have pricecharting_url but no image
+python backfill_images.py --dry-run    # Preview first
+python backfill_images.py              # Run full backfill
+python backfill_images.py --limit 100  # Test with 100 products
+
 # === SCRAPING OPERATIONS ===
 # Sync eligible products to progress table
 python sync_eligible_products.py
@@ -176,6 +182,13 @@ BankTCG App (pokemon-cards-final-data-with-ids.json)
 - Scrapes card data from PriceCharting set pages
 - Adds cards to products table with images
 - Supports --dry-run, --set-id, --max-sets options
+
+**backfill_images.py** - One-time image backfill
+- Finds products with pricecharting_url but no image
+- Scrapes image URLs from PriceCharting product pages
+- Updates products table with images
+- Run manually after adding new sets
+- Supports --dry-run, --limit, --batch-size, --workers options
 
 **sync_eligible_products.py** - Product syncing
 - Filters products: `market_price >= $15 AND (rarity OR number exists)`
