@@ -121,15 +121,14 @@ def save_graded_sales(product_id, scraped_data):
         if not isinstance(sales_list, list):
             continue
 
-        # Use grade label as-is (e.g., "PSA 7", "Ungraded", "BGS 10 Black Label")
-        # For backwards compatibility with integer grades, extract number if possible
-        if grade_label in ["Ungraded"]:
-            grade = grade_label  # Keep as string
+        # Map grade labels to integers (0 = Ungraded, 1-10 = PSA grades)
+        if grade_label == "Ungraded":
+            grade = 0
         else:
             try:
                 grade = int(grade_label.split()[-1])  # "PSA 7" -> 7
             except (ValueError, IndexError):
-                grade = grade_label  # Keep original label if can't extract number
+                continue  # Skip grades we can't parse
 
         for sale in sales_list:
             if not isinstance(sale, dict):

@@ -171,7 +171,7 @@ def join_data(output_path, include_sales=True):
             card = {
                 "card": card_str,
                 "price": float(market_price),
-                "ungraded": get_grade_price("Ungraded"),
+                "ungraded": get_grade_price(0),  # 0 = Ungraded
                 "psa7": get_grade_price(7),
                 "psa8": get_grade_price(8),
                 "grade9": get_grade_price(9),
