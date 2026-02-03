@@ -40,6 +40,17 @@ python export_to_app_format.py
 # Import missing sets as placeholders
 python import_missing_sets.py
 
+# === AUTOMATIC SET DISCOVERY ===
+# Discover all new Pokemon sets from PriceCharting
+python sync_all_sets.py
+python sync_all_sets.py --dry-run
+
+# Backfill cards for newly discovered sets
+python backfill_new_sets.py
+python backfill_new_sets.py --dry-run
+python backfill_new_sets.py --set-id <group_id>
+python backfill_new_sets.py --max-sets 5
+
 # === SCRAPING OPERATIONS ===
 # Sync eligible products to progress table
 python sync_eligible_products.py
@@ -154,6 +165,18 @@ BankTCG App (pokemon-cards-final-data-with-ids.json)
 - Creates empty groups for missing sets
 - Ready for future scraping or data import
 
+**sync_all_sets.py** - Automatic set discovery
+- Scrapes PriceCharting Pokemon category page
+- Discovers all Pokemon sets (not just Chinese)
+- Adds new sets to groups table with set_url
+- Updates existing sets if URL is missing
+
+**backfill_new_sets.py** - Automatic card backfill
+- Finds sets with set_url but no products (empty groups)
+- Scrapes card data from PriceCharting set pages
+- Adds cards to products table with images
+- Supports --dry-run, --set-id, --max-sets options
+
 **sync_eligible_products.py** - Product syncing
 - Filters products: `market_price >= $15 AND (rarity OR number exists)`
 - Syncs to `product_grade_progress` with `completed=false`
@@ -248,6 +271,18 @@ Located in `process_db.py:compute_graded_prices()`
 **update_prices.yml** - Price update workflow (DISABLED)
 - Manual trigger only (requires local BankTCG files)
 - Not meant to run in GitHub Actions
+
+**sync_new_sets.yml** - New set discovery workflow
+- Trigger: Weekly on Sundays at 1 AM UTC, manual dispatch
+- 2 steps:
+  1. `sync_all_sets.py` - Discovers new sets from PriceCharting category page
+  2. `backfill_new_sets.py` - Scrapes cards for newly discovered sets (empty groups)
+
+**scrape_chinese_sets.yml** - Chinese set scraping workflow
+- Trigger: Weekly on Sundays at 4 AM UTC, manual dispatch
+- 2 steps:
+  1. `sync_chinese_sets.py` - Syncs Chinese Pokemon sets
+  2. `backfill_chinese_cards.py` - Backfills cards for Chinese sets
 
 **keep_render_warm.yml** - Render instance warmup
 - Trigger: Every 10 minutes

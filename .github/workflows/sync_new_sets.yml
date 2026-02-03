@@ -9,7 +9,7 @@ on:
 jobs:
   sync-sets:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 120
 
     steps:
     - name: Checkout code
@@ -39,3 +39,11 @@ jobs:
         PYTHONUNBUFFERED: 1
       run: |
         python -u sync_all_sets.py
+
+    - name: Backfill Cards for New Sets
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        PYTHONUNBUFFERED: 1
+      run: |
+        python -u backfill_new_sets.py
