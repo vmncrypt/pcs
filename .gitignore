@@ -75,3 +75,4 @@ Thumbs.db
 # Exported data files
 supabase_*.json
 pokemon-cards-joined.json
+pokemon-cards-final-data-with-ids.json
