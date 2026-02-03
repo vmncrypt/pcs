@@ -1,0 +1,41 @@
+name: Sync New Pokemon Sets
+
+on:
+  schedule:
+    # Run weekly on Sundays at 1 AM UTC (before the main scraper)
+    - cron: '0 1 * * 0'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  sync-sets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Sync All Pokemon Sets
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        PYTHONUNBUFFERED: 1
+      run: |
+        python -u sync_all_sets.py
