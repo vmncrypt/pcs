@@ -8,10 +8,12 @@ pokemon-cards-final-data-with-ids.json without needing a database connection.
 Usage:
     python join_local_data.py
     python join_local_data.py --output my_output.json
+    python join_local_data.py --enriched-data /path/to/pokemon_enriched_series_data.json
 """
 
 import json
 import argparse
+import os
 from collections import defaultdict
 
 
@@ -22,6 +24,32 @@ def load_json(filename):
         data = json.load(f)
     print(f"   Loaded {len(data):,} records")
     return data
+
+
+def load_logo_map(enriched_path):
+    """Load set logos from enriched series data file."""
+    if not enriched_path or not os.path.exists(enriched_path):
+        print(f"⚠️  No enriched series data found at {enriched_path}")
+        return {}
+
+    print(f"📂 Loading logos from {enriched_path}...")
+    with open(enriched_path, 'r', encoding='utf-8') as f:
+        enriched_data = json.load(f)
+
+    # Build map of set name -> logo URL
+    # Try multiple name variations for matching
+    logo_map = {}
+    for item in enriched_data:
+        name = item.get('name', '')
+        logo = item.get('logo')
+        if name and logo:
+            logo_map[name] = logo
+            # Also add without "Pokemon " prefix for matching
+            if name.startswith('Pokemon '):
+                logo_map[name[8:]] = logo
+
+    print(f"   Loaded {len([v for v in logo_map.values() if v]):,} logos")
+    return logo_map
 
 
 def build_sales_history(graded_sales):
@@ -62,7 +90,7 @@ def get_latest_sale_price(sales_list):
     return sales_list[-1]['price']
 
 
-def join_data(output_path, include_sales=True):
+def join_data(output_path, include_sales=True, enriched_path=None):
     """Join all tables into app format."""
     print("🔄 Joining Supabase data into app format...")
     print("=" * 60)
@@ -76,6 +104,9 @@ def join_data(output_path, include_sales=True):
         graded_sales = load_json("supabase_graded_sales.json")
     else:
         graded_sales = []
+
+    # Load logo map from enriched data
+    logo_map = load_logo_map(enriched_path) if enriched_path else {}
 
     # Build lookup maps
     print("\n🔗 Building lookup maps...")
@@ -193,10 +224,22 @@ def join_data(output_path, include_sales=True):
         # Sort cards by price descending
         cards.sort(key=lambda x: x['price'], reverse=True)
 
-        output_data.append({
+        # Build set entry
+        set_entry = {
             "name": group_name,
             "cards": cards
-        })
+        }
+
+        # Add logo if available (try multiple name variations)
+        logo = (
+            logo_map.get(group_name) or
+            logo_map.get(f"Pokemon {group_name}") or
+            logo_map.get(group_name.replace("Pokemon ", ""))
+        )
+        if logo:
+            set_entry["logo"] = logo
+
+        output_data.append(set_entry)
 
     # Write output
     print(f"\n💾 Writing to {output_path}...")
@@ -205,6 +248,7 @@ def join_data(output_path, include_sales=True):
 
     # Summary
     total_cards = sum(len(g['cards']) for g in output_data)
+    sets_with_logos = sum(1 for g in output_data if 'logo' in g)
     cards_with_images = sum(1 for g in output_data for c in g['cards'] if 'image' in c)
     cards_with_ungraded = sum(1 for g in output_data for c in g['cards'] if c['ungraded'] > 0)
     cards_with_psa7 = sum(1 for g in output_data for c in g['cards'] if c['psa7'] > 0)
@@ -224,6 +268,7 @@ def join_data(output_path, include_sales=True):
     print("✅ Join Complete!")
     print("=" * 60)
     print(f"Sets: {len(output_data)}")
+    print(f"Sets with logos: {sets_with_logos} ({sets_with_logos/len(output_data)*100:.1f}%)")
     print(f"Total cards: {total_cards:,}")
     print(f"Cards with images: {cards_with_images:,} ({cards_with_images/total_cards*100:.1f}%)")
     print(f"Cards with Ungraded prices: {cards_with_ungraded:,} ({cards_with_ungraded/total_cards*100:.1f}%)")
@@ -244,9 +289,12 @@ def main():
                         help="Output file path (default: pokemon-cards-joined.json)")
     parser.add_argument("--no-sales", action="store_true",
                         help="Exclude sales history (smaller file size)")
+    parser.add_argument("--enriched-data", "-e",
+                        default="/Users/leon/Actual/Apps/Prod/BankTCG/assets/games/pokemon_enriched_series_data.json",
+                        help="Path to enriched series data file (for set logos)")
     args = parser.parse_args()
 
-    join_data(args.output, include_sales=not args.no_sales)
+    join_data(args.output, include_sales=not args.no_sales, enriched_path=args.enriched_data)
 
 
 if __name__ == "__main__":
