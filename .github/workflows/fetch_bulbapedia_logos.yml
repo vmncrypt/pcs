@@ -1,0 +1,237 @@
+name: Fetch Bulbapedia Logos
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_type:
+        description: 'Which Bulbapedia page to fetch'
+        required: true
+        default: 'japanese'
+        type: choice
+        options:
+          - japanese
+          - english
+          - both
+      download_images:
+        description: 'Download logo images as artifact'
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  fetch-logos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Fetch Bulbapedia pages
+        run: |
+          mkdir -p bulbapedia_data
+
+          fetch_page() {
+            local url="$1"
+            local output="$2"
+            echo "Fetching $url..."
+            curl -s -L \
+              -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+              -H "Accept-Language: en-US,en;q=0.5" \
+              "$url" > "$output"
+            echo "Saved to $output"
+          }
+
+          if [ "${{ github.event.inputs.page_type }}" = "japanese" ] || [ "${{ github.event.inputs.page_type }}" = "both" ]; then
+            fetch_page "https://bulbapedia.bulbagarden.net/wiki/List_of_Japanese_Pok%C3%A9mon_Trading_Card_Game_expansions" "bulbapedia_data/jp.html"
+          fi
+
+          if [ "${{ github.event.inputs.page_type }}" = "english" ] || [ "${{ github.event.inputs.page_type }}" = "both" ]; then
+            fetch_page "https://bulbapedia.bulbagarden.net/wiki/List_of_Pok%C3%A9mon_Trading_Card_Game_expansions" "bulbapedia_data/en.html"
+          fi
+
+      - name: Parse logos from HTML
+        run: |
+          python3 << 'EOF'
+          import re
+          import json
+          import os
+          from pathlib import Path
+
+          def get_higher_res_url(img_tag):
+              """Extract the highest resolution URL from an img tag."""
+              srcset_match = re.search(r'srcset="([^"]*)"', img_tag)
+              if srcset_match:
+                  srcset = srcset_match.group(1)
+                  for part in srcset.split(','):
+                      part = part.strip()
+                      if ' 2x' in part:
+                          return part.replace(' 2x', '').strip()
+                      elif ' 1.5x' in part:
+                          return part.replace(' 1.5x', '').strip()
+              src_match = re.search(r'src="([^"]*)"', img_tag)
+              if src_match:
+                  return src_match.group(1)
+              return None
+
+          def parse_html(filepath):
+              """Parse HTML file and extract logo mappings."""
+              if not os.path.exists(filepath):
+                  return {}
+
+              with open(filepath, 'r', encoding='utf-8') as f:
+                  content = f.read()
+
+              logos = {}
+              rows = re.findall(r'<tr[^>]*>(.*?)</tr>', content, re.DOTALL | re.IGNORECASE)
+
+              for row in rows:
+                  logo_imgs = re.findall(r'<img[^>]*Logo[^>]*>', row, re.IGNORECASE)
+                  if not logo_imgs:
+                      continue
+
+                  for img_tag in logo_imgs:
+                      if 'archives.bulbagarden.net' in img_tag and 'Logo' in img_tag:
+                          logo_url = get_higher_res_url(img_tag)
+                          if logo_url:
+                              # Extract set names from wiki links
+                              from urllib.parse import unquote
+                              wiki_links = re.findall(r'<a[^>]*href="/wiki/([^"]+)"[^>]*title="([^"]+)"[^>]*>', row)
+                              for wiki_path, title in wiki_links:
+                                  if any(x in title.lower() for x in ['file:', 'symbol', 'logo']):
+                                      continue
+                                  title = unquote(title).replace('_', ' ')
+                                  if '(TCG)' in title:
+                                      title = title.replace(' (TCG)', '')
+                                  if title and title not in logos:
+                                      logos[title] = logo_url
+                              break
+              return logos
+
+          # Parse all HTML files
+          all_logos = {}
+          for html_file in Path('bulbapedia_data').glob('*.html'):
+              print(f"Parsing {html_file}...")
+              logos = parse_html(str(html_file))
+              all_logos.update(logos)
+              print(f"  Found {len(logos)} logos")
+
+          # Save combined logos
+          output_file = 'bulbapedia_data/extracted_logos.json'
+          with open(output_file, 'w', encoding='utf-8') as f:
+              json.dump(all_logos, f, indent=2, ensure_ascii=False)
+          print(f"\nTotal: {len(all_logos)} logos saved to {output_file}")
+          EOF
+
+      - name: Download logo images
+        if: ${{ github.event.inputs.download_images == 'true' }}
+        run: |
+          python3 << 'EOF'
+          import json
+          import requests
+          import os
+          import time
+          from pathlib import Path
+          from urllib.parse import urlparse, unquote
+
+          # Load logos
+          with open('bulbapedia_data/extracted_logos.json', 'r') as f:
+              logos = json.load(f)
+
+          # Create output directory
+          output_dir = Path('bulbapedia_data/logos')
+          output_dir.mkdir(exist_ok=True)
+
+          # Download each logo
+          session = requests.Session()
+          session.headers.update({
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Referer': 'https://bulbapedia.bulbagarden.net/'
+          })
+
+          downloaded = 0
+          failed = 0
+
+          for name, url in logos.items():
+              try:
+                  # Create safe filename
+                  safe_name = "".join(c if c.isalnum() or c in ' -_' else '_' for c in name)
+                  safe_name = safe_name.strip()[:100]
+
+                  # Get extension from URL
+                  parsed = urlparse(url)
+                  path = unquote(parsed.path)
+                  ext = Path(path).suffix or '.png'
+
+                  filename = output_dir / f"{safe_name}{ext}"
+
+                  # Download
+                  response = session.get(url, timeout=30)
+                  response.raise_for_status()
+
+                  with open(filename, 'wb') as f:
+                      f.write(response.content)
+
+                  downloaded += 1
+                  print(f"Downloaded: {name}")
+
+                  # Rate limit
+                  time.sleep(0.5)
+
+              except Exception as e:
+                  failed += 1
+                  print(f"Failed: {name} - {e}")
+
+          print(f"\nDownloaded: {downloaded}, Failed: {failed}")
+          EOF
+
+      - name: Upload HTML artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bulbapedia-html
+          path: bulbapedia_data/*.html
+          retention-days: 30
+
+      - name: Upload logos JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: extracted-logos-json
+          path: bulbapedia_data/extracted_logos.json
+          retention-days: 30
+
+      - name: Upload logo images
+        if: ${{ github.event.inputs.download_images == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logo-images
+          path: bulbapedia_data/logos/
+          retention-days: 30
+
+      - name: Summary
+        run: |
+          echo "## Bulbapedia Logo Fetch Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f bulbapedia_data/extracted_logos.json ]; then
+            count=$(python3 -c "import json; print(len(json.load(open('bulbapedia_data/extracted_logos.json'))))")
+            echo "- **Total logos found:** $count" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- bulbapedia-html: Raw HTML files from Bulbapedia" >> $GITHUB_STEP_SUMMARY
+          echo "- extracted-logos-json: JSON mapping of set names to logo URLs" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ github.event.inputs.download_images }}" = "true" ]; then
+            echo "- logo-images: Downloaded logo image files" >> $GITHUB_STEP_SUMMARY
+          fi
