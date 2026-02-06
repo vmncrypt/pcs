@@ -22,6 +22,22 @@ from urllib.parse import urlparse, unquote
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Manual filename mappings for sets with non-matching names
+FILENAME_MAPPINGS = {
+    "Pokemon EX Latias & Latios": "EX FireRed _amp_ LeafGreen.png",  # Part of same era
+    "Pokemon Fire Red & Leaf Green": "EX FireRed _amp_ LeafGreen.png",
+    "Pokemon Japanese Challenge from the Darkness": "Gym Challenge.png",
+    "Pokemon Japanese Dream Shine Collection": "Legendary Shine Collection.png",
+    "Pokemon Japanese Heat Wave Arena": "Hot Wind Arena.png",
+    "Pokemon Japanese Mask of Change": "Transformation Mask.png",
+    "Pokemon Japanese Matchless Fighter": "Peerless Fighters.png",
+    "Pokemon Japanese Miracle Twins": "Miracle Twin.png",
+    "Pokemon Japanese Terastal Festival": "Terastal Fest ex.png",
+    "Pokemon Japanese Web": "Pokémon Web.png",
+    "Pokemon Korean Terastal Festival ex": "Terastal Fest ex.png",
+    "Pokemon Japanese SVG Special Set": "Scarlet ex_Violet ex.png",
+}
+
 # Paths
 ENRICHED_PATH = "/Users/leon/Actual/Apps/Prod/BankTCG/assets/games/pokemon_enriched_series_data.json"
 LOGOS_DIR = "/Users/leon/Actual/Apps/Prod/BankTCG/assets/images/series-logos/pokemon"
@@ -58,6 +74,21 @@ def find_matching_file(name, url, logos_dir):
     if not logos_path.exists():
         return None
 
+    # Check manual mappings first
+    if name in FILENAME_MAPPINGS:
+        mapped_file = FILENAME_MAPPINGS[name]
+        if (logos_path / mapped_file).exists():
+            return mapped_file
+
+    # Build list of existing files (case-insensitive lookup)
+    existing_files = {}
+    existing_files_normalized = {}
+    for f in logos_path.glob('*.png'):
+        existing_files[f.name.lower()] = f.name
+        # Also store normalized version (underscores to spaces, remove special chars)
+        norm_name = f.stem.lower().replace('_', ' ').replace('  ', ' ')
+        existing_files_normalized[norm_name] = f.name
+
     # Try different matching strategies
     candidates = []
 
@@ -90,18 +121,42 @@ def find_matching_file(name, url, logos_dir):
                 f"{short_name}.png",
                 f"japanese_{short_name}.png",
             ])
+            # Also try with spaces instead of underscores
+            space_name = name.replace('Pokemon ', '').replace(lang, '').strip()
+            candidates.append(f"{space_name}.png")
 
-    # Check for matches
+    # 5. Handle "Scarlet & Violet:" prefix
+    if 'Scarlet & Violet:' in name:
+        sv_name = name.replace('Scarlet & Violet:', '').strip()
+        candidates.extend([
+            f"{sv_name}.png",
+            f"{normalize_filename(sv_name)}.png",
+        ])
+
+    # 6. Handle "Sword & Shield:" prefix
+    if 'Sword & Shield:' in name:
+        ss_name = name.replace('Sword & Shield:', '').strip()
+        candidates.extend([
+            f"{ss_name}.png",
+            f"{normalize_filename(ss_name)}.png",
+        ])
+
+    # Check for exact matches
     for candidate in candidates:
         filepath = logos_path / candidate
         if filepath.exists():
             return candidate
 
-    # Also try case-insensitive search
-    existing_files = {f.name.lower(): f.name for f in logos_path.glob('*.png')}
+    # Try case-insensitive search
     for candidate in candidates:
         if candidate.lower() in existing_files:
             return existing_files[candidate.lower()]
+
+    # Try normalized matching (spaces vs underscores)
+    for candidate in candidates:
+        norm_candidate = candidate.replace('.png', '').lower().replace('_', ' ').replace('  ', ' ')
+        if norm_candidate in existing_files_normalized:
+            return existing_files_normalized[norm_candidate]
 
     return None
 
