@@ -87,12 +87,15 @@ def export_to_app_format():
 
     print(f"✅ Found {len(image_lookup):,} images in original data")
 
-    # Fetch all groups
+    # Fetch all groups with explicit ordering for consistency
     print("\n📥 Fetching groups from Supabase...")
-    groups_response = supabase.table("groups").select("id, name").execute()
+    groups_response = supabase.table("groups")\
+        .select("id, name")\
+        .order('name', desc=False)\
+        .execute()
     groups = groups_response.data
 
-    print(f"✅ Found {len(groups)} groups")
+    print(f"✅ Found {len(groups)} groups (ordered alphabetically)")
 
     # Build output data
     output_data = []
@@ -100,8 +103,12 @@ def export_to_app_format():
     for group in groups:
         print(f"\n📦 Processing: {group['name']}")
 
-        # Fetch products for this group (including image column)
-        products_response = supabase.table("products").select("id, variant_key, name, number, market_price, image").eq("group_id", group['id']).execute()
+        # Fetch products for this group with explicit ordering
+        products_response = supabase.table("products")\
+            .select("id, variant_key, name, number, market_price, image")\
+            .eq("group_id", group['id'])\
+            .order('variant_key', desc=False)\
+            .execute()
         products = products_response.data
 
         if not products:
@@ -134,6 +141,7 @@ def export_to_app_format():
             prices = price_lookup.get(product_id, {})
 
             card = {
+                "supabase_id": product_id,  # ✅ CRITICAL: Stable UUID from Supabase
                 "card": f"{product['name']} #{product['number']}" if product['number'] else product['name'],
                 "price": float(product['market_price']) if product['market_price'] else 0,
                 "grade9": float(prices.get(9, 0)),
@@ -162,18 +170,27 @@ def export_to_app_format():
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
         json.dump(output_data, f, indent=2, ensure_ascii=False)
 
-    # Summary
+    # Summary and validation
     total_cards = sum(len(group['cards']) for group in output_data)
     cards_with_images = sum(1 for group in output_data for card in group['cards'] if 'image' in card)
+    cards_with_ids = sum(1 for group in output_data for card in group['cards'] if 'supabase_id' in card)
 
     print("\n" + "=" * 60)
     print("✅ Export Complete!")
     print("=" * 60)
     print(f"Groups exported: {len(output_data)}")
     print(f"Total cards: {total_cards}")
+    print(f"Cards with Supabase IDs: {cards_with_ids} ({cards_with_ids/total_cards*100:.1f}%)")
     print(f"Cards with images: {cards_with_images} ({cards_with_images/total_cards*100:.1f}%)")
     print(f"Output file: {OUTPUT_PATH}")
     print("=" * 60)
+
+    # Validation check
+    if cards_with_ids != total_cards:
+        print("\n⚠️  WARNING: Not all cards have Supabase IDs!")
+        print(f"Missing IDs: {total_cards - cards_with_ids}")
+    else:
+        print("\n✅ All cards have stable Supabase UUIDs")
 
 
 if __name__ == "__main__":
