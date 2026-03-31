@@ -46,4 +46,4 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         PYTHONUNBUFFERED: 1
       run: |
-        python -u backfill_new_sets.py
+        python -u backfill_new_sets.py --min-cards 10
