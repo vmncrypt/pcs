@@ -29,8 +29,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Paths
-ORIGINAL_DATA_PATH = "/Users/leon/Actual/Apps/Prod/BankTCG/assets/games/pokemon-cards-base-data.json"
+# Output path
 OUTPUT_PATH = "/Users/leon/Actual/Apps/Prod/BankTCG/assets/games/pokemon-cards-final-data-with-ids.json"
 
 
@@ -64,28 +63,8 @@ def export_to_app_format():
     print("🔄 Exporting data from Supabase to app format...")
     print("=" * 60)
 
-    # Load original data to get image URLs
-    print(f"\n📂 Loading original data for images: {ORIGINAL_DATA_PATH}")
-    with open(ORIGINAL_DATA_PATH, 'r', encoding='utf-8') as f:
-        original_data = json.load(f)
-
-    # Build image lookup: {variant_key: image_url}
-    print("🖼️  Building image lookup map...")
+    # Images are stored directly in Supabase products.image — no base file needed.
     image_lookup = {}
-
-    for series in original_data:
-        series_name = series['name']
-
-        for card in series['cards']:
-            card_string = card.get('card', '')
-            image_url = card.get('image')
-
-            if image_url:
-                name, number = parse_card_name_and_number(card_string)
-                variant_key = create_variant_key(series_name, number)
-                image_lookup[variant_key] = image_url
-
-    print(f"✅ Found {len(image_lookup):,} images in original data")
 
     # Fetch all groups with explicit ordering for consistency
     print("\n📥 Fetching groups from Supabase...")

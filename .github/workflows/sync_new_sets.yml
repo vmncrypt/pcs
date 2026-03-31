@@ -4,7 +4,16 @@ on:
   schedule:
     # Run weekly on Sundays at 1 AM UTC (before the main scraper)
     - cron: '0 1 * * 0'
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      set_name:
+        description: 'Target a specific set by name (optional, e.g. "Ascended Heroes")'
+        required: false
+        default: ''
+      min_cards:
+        description: 'Retry sets with fewer than this many cards (default: 10)'
+        required: false
+        default: '10'
 
 jobs:
   sync-sets:
@@ -46,4 +55,8 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         PYTHONUNBUFFERED: 1
       run: |
-        python -u backfill_new_sets.py --min-cards 10
+        if [ -n "${{ github.event.inputs.set_name }}" ]; then
+          python -u backfill_new_sets.py --set-name "${{ github.event.inputs.set_name }}"
+        else
+          python -u backfill_new_sets.py --min-cards ${{ github.event.inputs.min_cards || '10' }}
+        fi
