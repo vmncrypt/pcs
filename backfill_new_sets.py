@@ -258,12 +258,7 @@ def process_card(group_id, card, i, total):
         logger.warning(f"Could not scrape details for {card['name']} ({card_url})")
         return None
 
-    market_price = details["market_price"]
-
-    # Skip if no price
-    if market_price is None:
-        logger.warning(f"No price for {card['name']}, skipping")
-        return None
+    market_price = details["market_price"] or 0.0
 
     clean_name, number = parse_card_name_number(card["name"])
     product_id = details["product_id"]
@@ -280,9 +275,15 @@ def process_card(group_id, card, i, total):
     }
 
 
-def get_empty_sets():
-    """Find sets that have a set_url but no products."""
-    logger.info("Finding sets with no products...")
+def get_incomplete_sets(min_cards=1):
+    """
+    Find sets that have a set_url but fewer than min_cards products.
+
+    min_cards=1 (default) catches only truly empty sets.
+    Pass a higher value (e.g. 10) to also retry partially-filled sets
+    whose backfill was interrupted or had cards silently dropped.
+    """
+    logger.info(f"Finding sets with fewer than {min_cards} product(s)...")
 
     # Get all groups with set_url
     groups_response = (
@@ -295,8 +296,7 @@ def get_empty_sets():
     if not groups_response.data:
         return []
 
-    # Count products per group
-    empty_sets = []
+    incomplete_sets = []
     for group in groups_response.data:
         count_response = (
             supabase.table("products")
@@ -307,11 +307,12 @@ def get_empty_sets():
 
         product_count = count_response.count if count_response.count else 0
 
-        if product_count == 0:
-            empty_sets.append(group)
-            logger.info(f"  Empty set found: {group['name']}")
+        if product_count < min_cards:
+            incomplete_sets.append({**group, "existing_products": product_count})
+            status = "empty" if product_count == 0 else f"only {product_count} cards"
+            logger.info(f"  Incomplete set ({status}): {group['name']}")
 
-    return empty_sets
+    return incomplete_sets
 
 
 def process_set(group_id, group_name, set_url, dry_run=False):
@@ -330,9 +331,13 @@ def process_set(group_id, group_name, set_url, dry_run=False):
         logger.warning("No cards found - page structure may have changed")
         return 0
 
-    # 2. Filter to cards with valid prices
-    cards_with_price = [c for c in cards_list if c["price"] is not None]
-    logger.info(f"Cards with prices: {len(cards_with_price)}")
+    # 2. Include all cards regardless of price — new sets often have no sales yet.
+    # Cards with price=None are stored with market_price=0 and will be updated
+    # by the grading scraper once sales data becomes available.
+    cards_with_price = cards_list
+    cards_priced_count = sum(1 for c in cards_list if c["price"] is not None)
+    logger.info(f"Total cards: {len(cards_with_price)} ({cards_priced_count} with prices, "
+                f"{len(cards_with_price) - cards_priced_count} without)")
 
     if dry_run:
         logger.info("=== DRY RUN - Would add these cards: ===")
@@ -400,28 +405,40 @@ def main():
     parser = argparse.ArgumentParser(description="Backfill cards for new Pokemon sets")
     parser.add_argument("--dry-run", action="store_true", help="Preview without adding")
     parser.add_argument("--set-id", type=str, help="Specific Group ID to process")
+    parser.add_argument("--set-name", type=str, help="Specific set name to process (case-insensitive substring match)")
     parser.add_argument("--max-sets", type=int, default=None, help="Maximum number of sets to process")
+    parser.add_argument("--min-cards", type=int, default=1,
+                        help="Retry sets with fewer than this many products (default: 1 = empty only). "
+                             "Use e.g. --min-cards 10 to retry partially-filled sets.")
     args = parser.parse_args()
 
     logger.info("Starting New Set Card Backfill...")
 
     if args.set_id:
-        # Process specific set
         response = (
             supabase.table("groups")
             .select("id, name, set_url")
             .eq("id", args.set_id)
             .execute()
         )
-
         if not response.data:
             logger.error(f"Set with ID {args.set_id} not found")
             return
-
         sets_to_process = response.data
+    elif args.set_name:
+        response = (
+            supabase.table("groups")
+            .select("id, name, set_url")
+            .ilike("name", f"%{args.set_name}%")
+            .execute()
+        )
+        if not response.data:
+            logger.error(f"No sets found matching name: {args.set_name}")
+            return
+        sets_to_process = response.data
+        logger.info(f"Found {len(sets_to_process)} set(s) matching '{args.set_name}'")
     else:
-        # Find all empty sets
-        sets_to_process = get_empty_sets()
+        sets_to_process = get_incomplete_sets(min_cards=args.min_cards)
 
     logger.info(f"\nFound {len(sets_to_process)} sets to backfill.")
 

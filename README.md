@@ -1,5 +1,10 @@
 ## Quick Start: Export Data for App
 
+**📱 Complete Integration Workflow:** See [BankTCG SETUP.md](https://github.com/yourusername/BankTCG/blob/main/resources/SETUP.md#database-system--rebuild-process) for the full pipeline from Supabase → BankTCG app.
+
+**This repo handles:** Supabase scraping & JSON export
+**BankTCG handles:** SQLite generation & Firebase Storage upload
+
 ```bash
 # 1. Download all tables from Supabase
 python3 export_supabase_db.py
@@ -10,11 +15,12 @@ python3 join_local_data.py --output pokemon-cards-final-data-with-ids.json
 # 2b. (Optional) Smaller file without sales history (4MB vs 30MB)
 python3 join_local_data.py --no-sales --output pokemon-cards-final-data-with-ids.json
 
-# 3. (Optional) Update image resolution
-# In the output file, replace /60.jpg with /240.jpg
+# 3. Copy to BankTCG
+cp *-final-data-with-ids.json /path/to/BankTCG/assets/games/
 
-# 4. Update app db version in stores/gameDataStore.ts
-# Increment CURRENT_VERSION by 1
+# 4. Build & upload (in BankTCG repo)
+cd /path/to/BankTCG
+bun run build:db:upload  # Increments version, builds DBs, uploads to Firebase
 ```
 
 ### Exported Files from Supabase
@@ -98,7 +104,7 @@ python3 export_to_app_format.py
 # In final_data_with_ids.json replace /60.jpg with /240.jpg
 
 # 8. Update the app db version
-# Increment CURRENT_VERSION in stores/gameDataStore.ts
+# Increment CURRENT_DOWNLOAD_VERSION in services/DatabaseDownloadService.ts
 ```
 
 Done! Your app has the new set with all cards and images.

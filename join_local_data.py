@@ -200,6 +200,7 @@ def join_data(output_path, include_sales=True, enriched_path=None):
                 return float(price) if price else 0.0
 
             card = {
+                "supabase_id": product_id,  # Stable UUID from Supabase
                 "card": card_str,
                 "price": float(market_price),
                 "ungraded": get_grade_price(0),  # 0 = Ungraded
@@ -250,6 +251,7 @@ def join_data(output_path, include_sales=True, enriched_path=None):
     total_cards = sum(len(g['cards']) for g in output_data)
     sets_with_logos = sum(1 for g in output_data if 'logo' in g)
     cards_with_images = sum(1 for g in output_data for c in g['cards'] if 'image' in c)
+    cards_with_supabase_id = sum(1 for g in output_data for c in g['cards'] if 'supabase_id' in c)
     cards_with_ungraded = sum(1 for g in output_data for c in g['cards'] if c['ungraded'] > 0)
     cards_with_psa7 = sum(1 for g in output_data for c in g['cards'] if c['psa7'] > 0)
     cards_with_psa8 = sum(1 for g in output_data for c in g['cards'] if c['psa8'] > 0)
@@ -270,6 +272,7 @@ def join_data(output_path, include_sales=True, enriched_path=None):
     print(f"Sets: {len(output_data)}")
     print(f"Sets with logos: {sets_with_logos} ({sets_with_logos/len(output_data)*100:.1f}%)")
     print(f"Total cards: {total_cards:,}")
+    print(f"Cards with Supabase IDs: {cards_with_supabase_id:,} ({cards_with_supabase_id/total_cards*100:.1f}%)")
     print(f"Cards with images: {cards_with_images:,} ({cards_with_images/total_cards*100:.1f}%)")
     print(f"Cards with Ungraded prices: {cards_with_ungraded:,} ({cards_with_ungraded/total_cards*100:.1f}%)")
     print(f"Cards with PSA 7 prices: {cards_with_psa7:,} ({cards_with_psa7/total_cards*100:.1f}%)")

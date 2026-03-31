@@ -1,5 +1,8 @@
 import os
 import re
+import math
+from collections import defaultdict
+from datetime import datetime
 from supabase import create_client, Client
 from main import scrape_pricecharting
 from dotenv import load_dotenv
@@ -391,7 +394,11 @@ def process_batch(batch_data, verbose=True):
             failed_count = len(batch_data)
             return 0, failed_count
 
-    # 2. Batch update products (pop_count and pricecharting_url)
+    # 2. Compute and upsert market prices into graded_prices
+    processed_ids = [u["id"] for u in product_updates]
+    compute_graded_prices_batch(processed_ids, verbose=verbose)
+
+    # 4. Batch update products (pop_count and pricecharting_url)
     if product_updates:
         try:
             if verbose:
@@ -404,7 +411,7 @@ def process_batch(batch_data, verbose=True):
         except Exception as e:
             print(f"   ❌ Error batch updating products: {e}")
 
-    # 3. Batch mark as completed
+    # 5. Batch mark as completed
     if progress_updates:
         try:
             if verbose:
@@ -424,6 +431,120 @@ def process_batch(batch_data, verbose=True):
         print(f"✅ Batch write complete: {success_count} products saved\n")
 
     return success_count, failed_count
+
+
+def calculate_market_price(sales, half_life=21):
+    """
+    Calculate market price using a time-decay weighted geometric mean.
+    Returns -1 when no sales exist (not 0, to distinguish from a zero price).
+    """
+    if not sales:
+        return {"price": -1, "sample_size": 0}
+
+    parsed = []
+    max_ts = 0
+    for sale in sales:
+        try:
+            ts = datetime.fromisoformat(sale["sale_date"]).timestamp()
+            max_ts = max(max_ts, ts)
+            parsed.append({"price": sale["price"], "ts": ts})
+        except Exception:
+            continue
+
+    if not parsed:
+        return {"price": -1, "sample_size": 0}
+
+    weighted_log_sum = 0.0
+    sum_weights = 0.0
+    for item in parsed:
+        days_ago = max(0, (max_ts - item["ts"]) / 86400)
+        weight = math.pow(2, -days_ago / half_life)
+        weighted_log_sum += weight * math.log(item["price"])
+        sum_weights += weight
+
+    if sum_weights == 0:
+        return {"price": -1, "sample_size": len(parsed)}
+
+    fair_price = math.exp(weighted_log_sum / sum_weights)
+    liquidity_factor = min(1, math.sqrt(sum_weights))
+    return {"price": fair_price * liquidity_factor, "sample_size": len(parsed)}
+
+
+def compute_graded_prices_batch(product_ids, verbose=True):
+    """
+    Fetch all graded_sales for the given product_ids, compute a market price
+    per (product_id, grade), and upsert the results into graded_prices.
+    """
+    if not product_ids:
+        return
+
+    if verbose:
+        print(f"\n🧮 Computing graded prices for {len(product_ids)} products...")
+
+    # Fetch all sales for these products in paginated batches
+    all_sales = []
+    page_size = 1000
+    offset = 0
+    while True:
+        try:
+            resp = (
+                supabase.table("graded_sales")
+                .select("product_id, grade, sale_date, price")
+                .in_("product_id", product_ids)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+        except Exception as e:
+            print(f"   ❌ Error fetching graded_sales: {e}")
+            return
+        if not resp.data:
+            break
+        all_sales.extend(resp.data)
+        if len(resp.data) < page_size:
+            break
+        offset += page_size
+
+    if not all_sales:
+        if verbose:
+            print("   ⚠️  No sales found for these products.")
+        return
+
+    # Group by (product_id, grade)
+    groups: dict = defaultdict(list)
+    for sale in all_sales:
+        if sale.get("grade") is not None and sale.get("price") is not None:
+            groups[(sale["product_id"], sale["grade"])].append(sale)
+
+    # Compute and collect upsert records
+    price_records = []
+    now = datetime.now().isoformat()
+    for (product_id, grade), sales in groups.items():
+        result = calculate_market_price(sales)
+        price_records.append({
+            "product_id": product_id,
+            "grade": grade,
+            "market_price": result["price"],
+            "sample_size": result["sample_size"],
+            "last_updated": now,
+        })
+
+    if not price_records:
+        return
+
+    # Upsert in batches of 500
+    batch_size = 500
+    for i in range(0, len(price_records), batch_size):
+        batch = price_records[i: i + batch_size]
+        try:
+            supabase.table("graded_prices").upsert(
+                batch, on_conflict="product_id,grade"
+            ).execute()
+        except Exception as e:
+            print(f"   ❌ Error upserting graded_prices batch {i // batch_size + 1}: {e}")
+
+    if verbose:
+        print(f"   ✅ Upserted {len(price_records)} graded price records "
+              f"across {len(product_ids)} products")
 
 
 def main():
