@@ -445,9 +445,12 @@ def calculate_market_price(sales, half_life=21):
     max_ts = 0
     for sale in sales:
         try:
+            price = sale["price"]
+            if not price or price <= 0:
+                continue
             ts = datetime.fromisoformat(sale["sale_date"]).timestamp()
             max_ts = max(max_ts, ts)
-            parsed.append({"price": sale["price"], "ts": ts})
+            parsed.append({"price": price, "ts": ts})
         except Exception:
             continue
 
