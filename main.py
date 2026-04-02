@@ -22,10 +22,6 @@ def strip_query_params(url):
 
 def search_product(query, set_name=None):
     """Returns URL of product page (either direct redirect or best match from search results)."""
-    # Clean set name: remove everything after ":"
-    if set_name and ':' in set_name:
-        set_name = set_name.split(':')[0].strip()
-
     search_url = f"{BASE_URL}/search-products?type=prices&q={quote(query)}"
     response = requests.get(search_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}, allow_redirects=True, timeout=30)
 

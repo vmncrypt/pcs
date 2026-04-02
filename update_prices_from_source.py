@@ -18,7 +18,10 @@ those price changes back to Supabase.
 import os
 import json
 import re
+from dotenv import load_dotenv
 from supabase import create_client
+
+load_dotenv()
 
 # Supabase connection
 SUPABASE_URL = os.getenv("SUPABASE_URL")
