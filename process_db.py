@@ -260,8 +260,15 @@ def process_product(product_data, verbose=True):
                 sales = parse_sales_for_grade(pricecharting_url, css_class, soup=soup)
                 result["grades"][grade] = sales
 
-            # Scrape POP report
-            result["pop_report"] = parse_pop_report(pricecharting_url, soup=soup)
+            # Fetch PSA pop counts only when graded sales exist (saves time)
+            import time as _time
+            has_graded_sales = any(len(s) > 0 for s in result["grades"].values())
+            if has_graded_sales:
+                from main import parse_pop_report_table
+                _time.sleep(0.5)
+                result["pop_report"] = parse_pop_report_table(pricecharting_url)
+            else:
+                result["pop_report"] = {}
 
         else:
             # Need to search for the product first
@@ -376,6 +383,12 @@ def process_batch(batch_data, verbose=True):
         # Collect progress updates
         progress_updates.append(product_id)
 
+    # Build pop_data map: {product_id: {grade: psa_count}}
+    pop_data = {}
+    for item in batch_data:
+        if item and item["result"].get("pop_report"):
+            pop_data[item["product_id"]] = item["result"]["pop_report"]
+
     # Now write everything in batches
     success_count = 0
     failed_count = 0
@@ -396,7 +409,7 @@ def process_batch(batch_data, verbose=True):
 
     # 2. Compute and upsert market prices into graded_prices
     processed_ids = [u["id"] for u in product_updates]
-    compute_graded_prices_batch(processed_ids, verbose=verbose)
+    compute_graded_prices_batch(processed_ids, pop_data=pop_data, verbose=verbose)
 
     # 4. Batch update products (pop_count and pricecharting_url)
     if product_updates:
@@ -473,7 +486,7 @@ def calculate_market_price(sales, half_life=21):
     return {"price": fair_price * liquidity_factor, "sample_size": len(parsed)}
 
 
-def compute_graded_prices_batch(product_ids, verbose=True):
+def compute_graded_prices_batch(product_ids, pop_data=None, verbose=True):
     """
     Fetch all graded_sales for the given product_ids, compute a market price
     per (product_id, grade), and upsert the results into graded_prices.
@@ -523,13 +536,18 @@ def compute_graded_prices_batch(product_ids, verbose=True):
     now = datetime.now().isoformat()
     for (product_id, grade), sales in groups.items():
         result = calculate_market_price(sales)
-        price_records.append({
+        record = {
             "product_id": product_id,
             "grade": grade,
             "market_price": result["price"],
             "sample_size": result["sample_size"],
             "last_updated": now,
-        })
+        }
+        if pop_data:
+            psa_pop = pop_data.get(product_id, {}).get(grade)
+            if psa_pop is not None:
+                record["psa_pop"] = psa_pop
+        price_records.append(record)
 
     if not price_records:
         return

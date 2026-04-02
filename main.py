@@ -166,6 +166,44 @@ def parse_pop_report(product_url, soup=None):
     return {idx: int(cell.text.strip().replace(",", "")) for idx, cell in enumerate(cells, start=1)}
 
 
+def parse_pop_report_table(product_url):
+    """
+    Fetch PSA population counts for grades 7, 8, 9, 10 from the /pop/item/ page.
+    Returns {7: count, 8: count, 9: count, 10: count} or {} if unavailable.
+    """
+    try:
+        pop_url = product_url.replace('pricecharting.com/game/', 'pricecharting.com/pop/item/', 1)
+        if pop_url == product_url:
+            return {}
+
+        soup = fetch(pop_url)
+        table = soup.select_one('#population-table tbody')
+        if not table:
+            return {}
+
+        pop = {}
+        for row in table.find_all('tr'):
+            grade_cell = row.select_one('td.grade-col')
+            psa_cell = row.select_one('td.psa-col')
+            if not grade_cell or not psa_cell:
+                continue
+
+            try:
+                grade = int(grade_cell.text.strip())
+            except ValueError:
+                continue  # skip "Total" row
+
+            if grade not in (7, 8, 9, 10):
+                continue
+
+            psa_text = psa_cell.text.strip().replace(',', '')
+            pop[grade] = 0 if psa_text == '-' else int(psa_text)
+
+        return pop
+    except Exception:
+        return {}
+
+
 def scrape_pricecharting(query, test_mode=False, set_name=None, verbose=True):
     """Full scraping function"""
     if verbose:
