@@ -102,15 +102,19 @@ def export_to_app_format():
         batch_size = 200
         for i in range(0, len(product_ids), batch_size):
             batch_ids = product_ids[i:i + batch_size]
-            prices_response = supabase.table("graded_prices").select("product_id, grade, market_price").in_("product_id", batch_ids).execute()
+            prices_response = supabase.table("graded_prices").select("product_id, grade, market_price, psa_pop").in_("product_id", batch_ids).execute()
             prices_data.extend(prices_response.data)
 
-        # Build price lookup: {product_id: {grade: price}}
+        # Build price lookup: {product_id: {grade: {price, psa_pop}}}
         price_lookup = {}
         for price in prices_data:
-            if price['product_id'] not in price_lookup:
-                price_lookup[price['product_id']] = {}
-            price_lookup[price['product_id']][price['grade']] = price['market_price']
+            pid = price['product_id']
+            if pid not in price_lookup:
+                price_lookup[pid] = {}
+            price_lookup[pid][price['grade']] = {
+                'price': price['market_price'],
+                'psa_pop': price.get('psa_pop'),
+            }
 
         # Build cards array
         cards = []
@@ -119,13 +123,27 @@ def export_to_app_format():
             variant_key = product['variant_key']
             prices = price_lookup.get(product_id, {})
 
+            def grade_price(g):
+                return float(prices[g]['price']) if prices.get(g) and prices[g]['price'] else 0
+
+            def grade_pop(g):
+                return prices[g]['psa_pop'] if prices.get(g) and prices[g].get('psa_pop') is not None else None
+
             card = {
                 "supabase_id": product_id,  # ✅ CRITICAL: Stable UUID from Supabase
                 "card": f"{product['name']} #{product['number']}" if product['number'] else product['name'],
                 "price": float(product['market_price']) if product['market_price'] else 0,
-                "grade9": float(prices.get(9, 0)),
-                "psa10": float(prices.get(10, 0))
+                "grade7": grade_price(7),
+                "grade8": grade_price(8),
+                "grade9": grade_price(9),
+                "psa10": grade_price(10),
             }
+
+            # Only include pop counts when available
+            for grade, key in [(7, 'psa7_pop'), (8, 'psa8_pop'), (9, 'psa9_pop'), (10, 'psa10_pop')]:
+                pop = grade_pop(grade)
+                if pop is not None:
+                    card[key] = pop
 
             # Add image URL (prefer Supabase, fallback to original data)
             image_url = product.get('image') or image_lookup.get(variant_key)
