@@ -275,23 +275,34 @@ def process_card(group_id, card, i, total):
     }
 
 
-def get_incomplete_sets(min_cards=1):
+def get_incomplete_sets(min_cards=1, category_id=None):
     """
     Find sets that have a set_url but fewer than min_cards products.
 
     min_cards=1 (default) catches only truly empty sets.
     Pass a higher value (e.g. 10) to also retry partially-filled sets
     whose backfill was interrupted or had cards silently dropped.
+
+    category_id: when provided, only consider groups with that category_id.
+                 Pass None to fetch groups where category_id IS NULL (Pokemon English).
+                 Pass "any" to fetch all games without filtering.
     """
     logger.info(f"Finding sets with fewer than {min_cards} product(s)...")
 
-    # Get all groups with set_url
-    groups_response = (
+    # Get all groups with set_url, optionally filtered by game category
+    query = (
         supabase.table("groups")
         .select("id, name, set_url")
         .not_.is_("set_url", "null")
-        .execute()
     )
+    if category_id == "any":
+        pass  # no filter — all games
+    elif category_id is None:
+        query = query.is_("category_id", "null")
+    else:
+        query = query.eq("category_id", category_id)
+
+    groups_response = query.execute()
 
     if not groups_response.data:
         return []
@@ -401,8 +412,16 @@ def process_set(group_id, group_name, set_url, dry_run=False):
     return len(products_to_add)
 
 
+GAME_CATEGORY_IDS = {
+    "pokemon": None,      # NULL in DB = English Pokemon
+    "magic": 1,
+    "yugioh": 2,
+    "one-piece": 3,
+}
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Backfill cards for new Pokemon sets")
+    parser = argparse.ArgumentParser(description="Backfill cards for new sets")
     parser.add_argument("--dry-run", action="store_true", help="Preview without adding")
     parser.add_argument("--set-id", type=str, help="Specific Group ID to process")
     parser.add_argument("--set-name", type=str, help="Specific set name to process (case-insensitive substring match)")
@@ -410,6 +429,12 @@ def main():
     parser.add_argument("--min-cards", type=int, default=1,
                         help="Retry sets with fewer than this many products (default: 1 = empty only). "
                              "Use e.g. --min-cards 10 to retry partially-filled sets.")
+    parser.add_argument(
+        "--game",
+        choices=list(GAME_CATEGORY_IDS.keys()),
+        default=None,
+        help="Filter incomplete sets by game. Defaults to all games if --set-id/--set-name not provided.",
+    )
     args = parser.parse_args()
 
     logger.info("Starting New Set Card Backfill...")
@@ -438,7 +463,8 @@ def main():
         sets_to_process = response.data
         logger.info(f"Found {len(sets_to_process)} set(s) matching '{args.set_name}'")
     else:
-        sets_to_process = get_incomplete_sets(min_cards=args.min_cards)
+        category_id = GAME_CATEGORY_IDS.get(args.game, "any") if args.game else "any"
+        sets_to_process = get_incomplete_sets(min_cards=args.min_cards, category_id=category_id)
 
     logger.info(f"\nFound {len(sets_to_process)} sets to backfill.")
 

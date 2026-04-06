@@ -14,6 +14,7 @@ Run this after scraping completes to update your app's data.
 import os
 import json
 import re
+import argparse
 from supabase import create_client
 from dotenv import load_dotenv
 
@@ -29,8 +30,16 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Output path
-OUTPUT_PATH = "/Users/leon/Actual/Apps/Prod/BankTCG/assets/games/pokemon-cards-final-data-with-ids.json"
+BANKTCG_ASSETS = "/Users/leon/Actual/Apps/Prod/BankTCG/assets/games"
+
+# category_id=None means filter WHERE category_id IS NULL (English Pokemon).
+# Other games use the same IDs assigned in sync_all_sets.py.
+GAME_CONFIGS = {
+    "pokemon":   {"category_id": None, "output": f"{BANKTCG_ASSETS}/pokemon-cards-final-data-with-ids.json"},
+    "magic":     {"category_id": 1,    "output": f"{BANKTCG_ASSETS}/magic-cards-final-data-with-ids.json"},
+    "yugioh":    {"category_id": 2,    "output": f"{BANKTCG_ASSETS}/yugioh-cards-final-data-with-ids.json"},
+    "one-piece": {"category_id": 3,    "output": f"{BANKTCG_ASSETS}/one-piece-cards-final-data-with-ids.json"},
+}
 
 
 def parse_card_name_and_number(card_string):
@@ -58,20 +67,26 @@ def create_variant_key(series_name, card_number):
         return slug
 
 
-def export_to_app_format():
-    """Export data in BankTCG app format"""
-    print("🔄 Exporting data from Supabase to app format...")
+def export_to_app_format(game="pokemon"):
+    """Export data in BankTCG app format for the given game."""
+    config = GAME_CONFIGS[game]
+    category_id = config["category_id"]
+    output_path = config["output"]
+
+    print(f"🔄 Exporting {game} data from Supabase to app format...")
     print("=" * 60)
 
     # Images are stored directly in Supabase products.image — no base file needed.
     image_lookup = {}
 
-    # Fetch all groups with explicit ordering for consistency
+    # Fetch groups for this game only, filtered by category_id
     print("\n📥 Fetching groups from Supabase...")
-    groups_response = supabase.table("groups")\
-        .select("id, name")\
-        .order('name', desc=False)\
-        .execute()
+    query = supabase.table("groups").select("id, name").order('name', desc=False)
+    if category_id is None:
+        query = query.is_("category_id", "null")
+    else:
+        query = query.eq("category_id", category_id)
+    groups_response = query.execute()
     groups = groups_response.data
 
     print(f"✅ Found {len(groups)} groups (ordered alphabetically)")
@@ -161,10 +176,10 @@ def export_to_app_format():
         print(f"   ✅ Exported {len(cards)} cards")
 
     # Write to file
-    print(f"\n💾 Writing to: {OUTPUT_PATH}")
-    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+    print(f"\n💾 Writing to: {output_path}")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
+    with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(output_data, f, indent=2, ensure_ascii=False)
 
     # Summary and validation
@@ -175,11 +190,12 @@ def export_to_app_format():
     print("\n" + "=" * 60)
     print("✅ Export Complete!")
     print("=" * 60)
+    print(f"Game: {game}")
     print(f"Groups exported: {len(output_data)}")
     print(f"Total cards: {total_cards}")
     print(f"Cards with Supabase IDs: {cards_with_ids} ({cards_with_ids/total_cards*100:.1f}%)")
     print(f"Cards with images: {cards_with_images} ({cards_with_images/total_cards*100:.1f}%)")
-    print(f"Output file: {OUTPUT_PATH}")
+    print(f"Output file: {output_path}")
     print("=" * 60)
 
     # Validation check
@@ -191,4 +207,12 @@ def export_to_app_format():
 
 
 if __name__ == "__main__":
-    export_to_app_format()
+    parser = argparse.ArgumentParser(description="Export Supabase card data to BankTCG app format")
+    parser.add_argument(
+        "--game",
+        choices=list(GAME_CONFIGS.keys()),
+        default="pokemon",
+        help="Which game to export (default: pokemon)",
+    )
+    args = parser.parse_args()
+    export_to_app_format(game=args.game)

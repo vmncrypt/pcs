@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Sync all Pokemon sets from PriceCharting to Supabase.
+Sync all card sets from PriceCharting to Supabase.
 
-This script scrapes the PriceCharting Pokemon category page,
+This script scrapes a PriceCharting category page,
 discovers all sets, and adds any new ones to the groups table.
 
 Usage:
-    python sync_all_sets.py
-    python sync_all_sets.py --dry-run  # Preview without adding
+    python sync_all_sets.py                        # Pokemon (default)
+    python sync_all_sets.py --game magic           # Magic: The Gathering
+    python sync_all_sets.py --game yugioh          # Yu-Gi-Oh!
+    python sync_all_sets.py --game one-piece       # One Piece Card Game
+    python sync_all_sets.py --dry-run              # Preview without adding
 """
 
 import os
@@ -34,7 +37,35 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-PRICECHARTING_URL = "https://www.pricecharting.com/category/pokemon-cards"
+# Game configurations: category page URL, link prefix, names to skip, and Supabase category_id.
+# category_id=None means no filter (English Pokemon). Other games use distinct IDs so they can
+# be exported and filtered independently.
+GAME_CONFIGS = {
+    "pokemon": {
+        "category_url": "https://www.pricecharting.com/category/pokemon-cards",
+        "link_prefix": "/console/pokemon-",
+        "skip_names": {"Pokemon Cards"},
+        "category_id": None,
+    },
+    "magic": {
+        "category_url": "https://www.pricecharting.com/category/magic-cards",
+        "link_prefix": "/console/magic-",
+        "skip_names": {"Magic: The Gathering"},
+        "category_id": 1,
+    },
+    "yugioh": {
+        "category_url": "https://www.pricecharting.com/category/yugioh-cards",
+        "link_prefix": "/console/yugioh-",
+        "skip_names": {"Yu-Gi-Oh!"},
+        "category_id": 2,
+    },
+    "one-piece": {
+        "category_url": "https://www.pricecharting.com/category/one-piece-cards",
+        "link_prefix": "/console/one-piece-",
+        "skip_names": {"One Piece Card Game"},
+        "category_id": 3,
+    },
+}
 
 
 def fetch_page(url):
@@ -51,8 +82,8 @@ def fetch_page(url):
         return None
 
 
-def extract_all_sets(html_content):
-    """Extract all Pokemon sets from HTML."""
+def extract_all_sets(html_content, link_prefix, skip_names):
+    """Extract all sets from HTML matching the given link_prefix."""
     soup = BeautifulSoup(html_content, "lxml")
     set_links = soup.find_all("a", href=True)
 
@@ -63,22 +94,14 @@ def extract_all_sets(html_content):
         href = link['href']
         text = link.text.strip()
 
-        # Match Pokemon set links (format: /console/pokemon-*)
-        if href.startswith("/console/pokemon-"):
-            # Skip if empty or already seen
+        if href.startswith(link_prefix):
             if not text or text in seen_names:
                 continue
-
-            # Skip non-set pages (like "Pokemon Cards" main category)
-            if text == "Pokemon Cards":
+            if text in skip_names:
                 continue
 
             full_url = "https://www.pricecharting.com" + href
-
-            sets.append({
-                "name": text,
-                "set_url": full_url
-            })
+            sets.append({"name": text, "set_url": full_url})
             seen_names.add(text)
 
     return sets
@@ -114,7 +137,7 @@ def get_existing_groups():
         return {}, {}
 
 
-def sync_sets(scraped_sets, dry_run=False):
+def sync_sets(scraped_sets, dry_run=False, category_id=None):
     """Sync scraped sets to the groups table."""
     name_to_url, url_to_name = get_existing_groups()
     existing_names = set(name_to_url.keys())
@@ -167,7 +190,12 @@ def sync_sets(scraped_sets, dry_run=False):
             batch_size = 50
             for i in range(0, len(sets_to_add), batch_size):
                 batch = sets_to_add[i:i + batch_size]
-                payloads = [{"name": s["name"], "set_url": s["set_url"]} for s in batch]
+                payloads = []
+                for s in batch:
+                    payload = {"name": s["name"], "set_url": s["set_url"]}
+                    if category_id is not None:
+                        payload["category_id"] = category_id
+                    payloads.append(payload)
                 supabase.table("groups").insert(payloads).execute()
                 logger.info(f"  Inserted batch {i // batch_size + 1} ({len(batch)} sets)")
 
@@ -194,20 +222,32 @@ def sync_sets(scraped_sets, dry_run=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync all Pokemon sets from PriceCharting")
+    parser = argparse.ArgumentParser(description="Sync card sets from PriceCharting")
+    parser.add_argument(
+        "--game",
+        choices=list(GAME_CONFIGS.keys()),
+        default="pokemon",
+        help="Which game to sync (default: pokemon)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
     args = parser.parse_args()
 
-    logger.info("🚀 Starting Pokemon Set Sync...")
-    logger.info(f"Source: {PRICECHARTING_URL}")
+    config = GAME_CONFIGS[args.game]
+    category_url = config["category_url"]
+    link_prefix = config["link_prefix"]
+    skip_names = config["skip_names"]
+    category_id = config["category_id"]
+
+    logger.info(f"🚀 Starting {args.game} Set Sync...")
+    logger.info(f"Source: {category_url}")
 
     # 1. Scrape
-    html = fetch_page(PRICECHARTING_URL)
+    html = fetch_page(category_url)
     if not html:
         logger.error("Failed to fetch PriceCharting page")
         return
 
-    all_sets = extract_all_sets(html)
+    all_sets = extract_all_sets(html, link_prefix, skip_names)
     logger.info(f"Found {len(all_sets)} sets on PriceCharting")
 
     if not all_sets:
@@ -215,7 +255,7 @@ def main():
         return
 
     # 2. Sync
-    sync_sets(all_sets, dry_run=args.dry_run)
+    sync_sets(all_sets, dry_run=args.dry_run, category_id=category_id)
     logger.info("✨ Sync Complete.")
 
 

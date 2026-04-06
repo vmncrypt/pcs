@@ -1,34 +1,34 @@
-name: Sync New Sets (All Games)
+name: Sync Non-Pokemon Game Sets (Manual)
 
 on:
-  schedule:
-    # Run weekly on Sundays at 1 AM UTC (before the main scraper)
-    - cron: '0 1 * * 0'
   workflow_dispatch:
     inputs:
       game:
-        description: 'Which game to sync (leave empty to sync all)'
-        required: false
-        default: ''
+        description: 'Which game to sync'
+        required: true
+        type: choice
+        options:
+          - magic
+          - yugioh
+          - one-piece
       set_name:
-        description: 'Target a specific set by name (optional, e.g. "Ascended Heroes")'
+        description: 'Target a specific set by name (optional, e.g. "Stardust Overdrive")'
         required: false
         default: ''
       min_cards:
         description: 'Retry sets with fewer than this many cards (default: 10)'
         required: false
         default: '10'
+      dry_run:
+        description: 'Preview discovered sets without writing to DB'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   sync-sets:
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    strategy:
-      matrix:
-        game: [pokemon, magic, yugioh, one-piece]
-      fail-fast: false  # Don't cancel other games if one fails
-    # When triggered manually with a specific game, skip the other matrix entries
-    if: ${{ github.event.inputs.game == '' || github.event.inputs.game == matrix.game }}
 
     steps:
     - name: Checkout code
@@ -57,7 +57,11 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         PYTHONUNBUFFERED: 1
       run: |
-        python -u sync_all_sets.py --game ${{ matrix.game }}
+        ARGS="--game ${{ github.event.inputs.game }}"
+        if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+          ARGS="$ARGS --dry-run"
+        fi
+        python -u sync_all_sets.py $ARGS
 
     - name: Backfill Cards for New Sets
       env:
@@ -65,12 +69,18 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         PYTHONUNBUFFERED: 1
       run: |
+        # Skip backfill when dry_run is true
+        if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+          echo "Dry run — skipping backfill"
+          exit 0
+        fi
+
         if [ -n "${{ github.event.inputs.set_name }}" ]; then
           python -u backfill_new_sets.py \
-            --game ${{ matrix.game }} \
+            --game ${{ github.event.inputs.game }} \
             --set-name "${{ github.event.inputs.set_name }}"
         else
           python -u backfill_new_sets.py \
-            --game ${{ matrix.game }} \
+            --game ${{ github.event.inputs.game }} \
             --min-cards ${{ github.event.inputs.min_cards || '10' }}
         fi
