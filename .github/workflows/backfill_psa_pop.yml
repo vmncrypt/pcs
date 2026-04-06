@@ -9,34 +9,82 @@ on:
         default: '1.0'
 
 jobs:
-  backfill-pop:
+  backfill-1:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
-
+    timeout-minutes: 120
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-
-    - name: Cache dependencies
-      uses: actions/cache@v3
+    - uses: actions/cache@v3
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-
-    - name: Install dependencies
-      run: pip install -r requirements.txt
-
-    - name: Run PSA pop backfill
+    - run: pip install -r requirements.txt
+    - name: Run batch 1 (0–2249)
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         PYTHONUNBUFFERED: 1
-      run: |
-        python -u backfill_psa_pop.py --delay ${{ github.event.inputs.delay || '1.0' }}
+      run: python -u backfill_psa_pop.py --offset 0 --max 2250 --delay ${{ github.event.inputs.delay || '1.0' }}
+
+  backfill-2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+    - run: pip install -r requirements.txt
+    - name: Run batch 2 (2250–4499)
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        PYTHONUNBUFFERED: 1
+      run: python -u backfill_psa_pop.py --offset 2250 --max 2250 --delay ${{ github.event.inputs.delay || '1.0' }}
+
+  backfill-3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+    - run: pip install -r requirements.txt
+    - name: Run batch 3 (4500–6749)
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        PYTHONUNBUFFERED: 1
+      run: python -u backfill_psa_pop.py --offset 4500 --max 2250 --delay ${{ github.event.inputs.delay || '1.0' }}
+
+  backfill-4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+    - run: pip install -r requirements.txt
+    - name: Run batch 4 (6750–8999)
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        PYTHONUNBUFFERED: 1
+      run: python -u backfill_psa_pop.py --offset 6750 --max 2250 --delay ${{ github.event.inputs.delay || '1.0' }}

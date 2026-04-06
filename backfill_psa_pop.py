@@ -74,11 +74,12 @@ def upsert_pop_for_product(product_id, pop_report):
 def main():
     parser = argparse.ArgumentParser(description="Backfill PSA pop counts from PriceCharting")
     parser.add_argument("--delay", type=float, default=1.0, help="Delay between requests (seconds)")
-    parser.add_argument("--max", type=int, default=None, help="Max products to process (for testing)")
+    parser.add_argument("--max", type=int, default=None, help="Max products to process")
+    parser.add_argument("--offset", type=int, default=0, help="Starting offset into the products list (for parallel jobs)")
     args = parser.parse_args()
 
     print("🚀 PSA Pop Backfill")
-    print(f"   Delay: {args.delay}s | Max: {args.max or 'unlimited'}")
+    print(f"   Delay: {args.delay}s | Offset: {args.offset} | Max: {args.max or 'unlimited'}")
     print("   Fetching already-completed products...")
     already_done = fetch_already_done_ids()
     print(f"   Skipping {len(already_done)} products already processed\n")
@@ -86,7 +87,7 @@ def main():
     total = 0
     updated = 0
     skipped = 0
-    offset = 0
+    offset = args.offset
     batch_size = 200
 
     while True:
