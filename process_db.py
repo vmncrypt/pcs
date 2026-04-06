@@ -260,15 +260,11 @@ def process_product(product_data, verbose=True):
                 sales = parse_sales_for_grade(pricecharting_url, css_class, soup=soup)
                 result["grades"][grade] = sales
 
-            # Fetch PSA pop counts only when graded sales exist (saves time)
+            # Always fetch PSA pop counts (pop exists independently of recent sales)
             import time as _time
-            has_graded_sales = any(len(s) > 0 for s in result["grades"].values())
-            if has_graded_sales:
-                from main import parse_pop_report_table
-                _time.sleep(0.5)
-                result["pop_report"] = parse_pop_report_table(pricecharting_url)
-            else:
-                result["pop_report"] = {}
+            from main import parse_pop_report_table
+            _time.sleep(0.5)
+            result["pop_report"] = parse_pop_report_table(pricecharting_url)
 
         else:
             # Need to search for the product first

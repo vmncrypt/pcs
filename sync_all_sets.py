@@ -105,7 +105,7 @@ def get_existing_groups():
                 break
             offset += limit
 
-        # Return both: name -> set_url, and url -> name
+        # Return both: name -> set_url, and url -> name (for duplicate detection)
         name_to_url = {item["name"]: item.get("set_url") for item in all_groups}
         url_to_name = {item["set_url"]: item["name"] for item in all_groups if item.get("set_url")}
         return name_to_url, url_to_name
@@ -123,18 +123,13 @@ def sync_sets(scraped_sets, dry_run=False):
 
     sets_to_add = []
     sets_to_update = []   # URL updates for name-matched groups
-    sets_to_rename = []   # Name updates for URL-matched groups (normalize naming)
 
     for s in scraped_sets:
         name = s["name"]
         url = s["set_url"]
 
         if url in url_to_name:
-            # URL already exists — check if name matches PriceCharting
-            db_name = url_to_name[url]
-            if db_name != name:
-                sets_to_rename.append({"old_name": db_name, "new_name": name, "set_url": url})
-            # Either way, don't add as new set
+            # URL already exists — skip, don't create a duplicate regardless of name
             continue
 
         if name not in existing_names:
@@ -148,7 +143,6 @@ def sync_sets(scraped_sets, dry_run=False):
 
     logger.info(f"New sets to add: {len(sets_to_add)}")
     logger.info(f"Existing sets to update URL: {len(sets_to_update)}")
-    logger.info(f"Existing sets to rename (name normalization): {len(sets_to_rename)}")
 
     if dry_run:
         logger.info("=== DRY RUN - No changes will be made ===")
@@ -162,10 +156,6 @@ def sync_sets(scraped_sets, dry_run=False):
             logger.info("Sets that would have URL updated:")
             for s in sets_to_update[:10]:
                 logger.info(f"  ~ {s['name']}")
-        if sets_to_rename:
-            logger.info("Sets that would be renamed to match PriceCharting:")
-            for s in sets_to_rename:
-                logger.info(f"  rename: '{s['old_name']}' → '{s['new_name']}'")
         return
 
     # 1. Insert New Sets (let Supabase auto-generate UUIDs)
@@ -201,19 +191,6 @@ def sync_sets(scraped_sets, dry_run=False):
     else:
         logger.info("No existing sets needed URL updates.")
 
-    # 3. Rename sets whose names don't match PriceCharting (normalize naming)
-    if sets_to_rename:
-        logger.info(f"Renaming {len(sets_to_rename)} sets to match PriceCharting naming...")
-        for rename in sets_to_rename:
-            try:
-                supabase.table("groups").update({
-                    "name": rename["new_name"]
-                }).eq("set_url", rename["set_url"]).execute()
-                logger.info(f"  ✅ '{rename['old_name']}' → '{rename['new_name']}'")
-            except Exception as e:
-                logger.error(f"❌ Error renaming '{rename['old_name']}': {e}")
-    else:
-        logger.info("No sets needed renaming.")
 
 
 def main():
