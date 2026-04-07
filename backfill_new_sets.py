@@ -358,58 +358,57 @@ def process_set(group_id, group_name, set_url, dry_run=False):
             logger.info(f"  ... and {len(cards_with_price) - 10} more")
         return len(cards_with_price)
 
-    # 3. Scrape detailed info for each card (multithreaded)
-    products_to_add = []
+    # 3. Scrape and save incrementally — flush to DB every FLUSH_EVERY cards so
+    #    a mid-run cancellation never loses an entire large set.
+    FLUSH_EVERY = 50
     max_workers = 3
+    total = len(cards_with_price)
+    pending: list = []
+    total_saved = 0
+
+    def flush(batch):
+        payloads = [
+            {
+                "variant_key": p["variant_key"],
+                "name": p["name"],
+                "number": p["number"],
+                "group_id": p["group_id"],
+                "market_price": p["market_price"],
+                "image": p["image"],
+                "pricecharting_url": p["pricecharting_url"],
+            }
+            for p in batch
+        ]
+        supabase.table("products").upsert(payloads, on_conflict="variant_key").execute()
 
     def process_wrapper(args):
         idx, card = args
-        return process_card(group_id, card, idx, len(cards_with_price))
+        return process_card(group_id, card, idx, total)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = list(executor.map(process_wrapper, enumerate(cards_with_price, 1)))
+        for result in executor.map(process_wrapper, enumerate(cards_with_price, 1)):
+            if result is None:
+                continue
+            pending.append(result)
+            if len(pending) >= FLUSH_EVERY:
+                try:
+                    flush(pending)
+                    total_saved += len(pending)
+                    logger.info(f"  💾 Saved {total_saved}/{total} cards to DB so far...")
+                except Exception as e:
+                    logger.error(f"Error flushing batch: {e}")
+                pending = []
 
-    products_to_add = [r for r in results if r is not None]
-    logger.info(f"Successfully scraped {len(products_to_add)} cards with full details.")
-
-    # 4. Insert into products table
-    if products_to_add:
+    # Final flush for any remainder
+    if pending:
         try:
-            logger.info(f"Inserting {len(products_to_add)} products into database...")
-
-            # Batch insert in chunks of 50
-            batch_size = 50
-            for i in range(0, len(products_to_add), batch_size):
-                batch = products_to_add[i:i + batch_size]
-
-                # Prepare payloads (only include fields that exist in products table)
-                payloads = []
-                for p in batch:
-                    payload = {
-                        "variant_key": p["variant_key"],
-                        "name": p["name"],
-                        "number": p["number"],
-                        "group_id": p["group_id"],
-                        "market_price": p["market_price"],
-                        "image": p["image"],
-                        "pricecharting_url": p["pricecharting_url"],
-                    }
-                    payloads.append(payload)
-
-                supabase.table("products").upsert(
-                    payloads,
-                    on_conflict="variant_key"
-                ).execute()
-
-                logger.info(f"  Inserted batch {i // batch_size + 1} ({len(batch)} cards)")
-
-            logger.info(f"Successfully added {len(products_to_add)} cards to {group_name}")
-
+            flush(pending)
+            total_saved += len(pending)
         except Exception as e:
-            logger.error(f"Error inserting products: {e}")
-            return 0
+            logger.error(f"Error flushing final batch: {e}")
 
-    return len(products_to_add)
+    logger.info(f"Successfully added {total_saved} cards to {group_name}")
+    return total_saved
 
 
 GAME_CATEGORY_IDS = {
