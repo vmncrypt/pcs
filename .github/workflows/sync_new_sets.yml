@@ -18,22 +18,23 @@ on:
 jobs:
   sync-sets:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 360  # 6 hours — initial MTG/YGO backfill can have thousands of cards
     strategy:
       matrix:
         game: [pokemon, magic, yugioh, one-piece]
       fail-fast: false  # Don't cancel other games if one fails
+
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
 
     - name: Cache dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
