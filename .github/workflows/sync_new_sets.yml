@@ -6,10 +6,6 @@ on:
     - cron: '0 1 * * 0'
   workflow_dispatch:
     inputs:
-      game:
-        description: 'Which game to sync (leave empty to sync all)'
-        required: false
-        default: ''
       set_name:
         description: 'Target a specific set by name (optional, e.g. "Ascended Heroes")'
         required: false
@@ -27,9 +23,6 @@ jobs:
       matrix:
         game: [pokemon, magic, yugioh, one-piece]
       fail-fast: false  # Don't cancel other games if one fails
-    # When triggered manually with a specific game, skip the other matrix entries
-    if: ${{ github.event.inputs.game == '' || github.event.inputs.game == matrix.game }}
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
