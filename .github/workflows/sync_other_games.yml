@@ -19,6 +19,10 @@ on:
         description: 'Retry sets with fewer than this many cards (default: 10)'
         required: false
         default: '10'
+      max_sets:
+        description: 'Max incomplete sets to process per run (default: 20)'
+        required: false
+        default: '20'
       dry_run:
         description: 'Preview discovered sets without writing to DB'
         required: false
@@ -82,5 +86,6 @@ jobs:
         else
           python -u backfill_new_sets.py \
             --game ${{ github.event.inputs.game }} \
-            --min-cards ${{ github.event.inputs.min_cards || '10' }}
+            --min-cards ${{ github.event.inputs.min_cards || '10' }} \
+            --max-sets ${{ github.event.inputs.max_sets || '20' }}
         fi

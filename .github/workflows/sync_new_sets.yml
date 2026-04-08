@@ -14,11 +14,15 @@ on:
         description: 'Retry sets with fewer than this many cards (default: 10)'
         required: false
         default: '10'
+      max_sets:
+        description: 'Max incomplete sets to process per game per run (default: 20). Completed sets are skipped automatically on the next run.'
+        required: false
+        default: '20'
 
 jobs:
   sync-sets:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 hours — initial MTG/YGO backfill can have thousands of cards
+    timeout-minutes: 360
     strategy:
       matrix:
         game: [pokemon, magic, yugioh, one-piece]
@@ -66,5 +70,6 @@ jobs:
         else
           python -u backfill_new_sets.py \
             --game ${{ matrix.game }} \
-            --min-cards ${{ github.event.inputs.min_cards || '10' }}
+            --min-cards ${{ github.event.inputs.min_cards || '10' }} \
+            --max-sets ${{ github.event.inputs.max_sets || '20' }}
         fi
