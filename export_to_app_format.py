@@ -131,6 +131,34 @@ def export_to_app_format(game="pokemon"):
                 'psa_pop': price.get('psa_pop'),
             }
 
+        # Fetch graded sales in smaller batches to avoid statement timeout
+        sales_data = []
+        sales_batch_size = 30
+        for i in range(0, len(product_ids), sales_batch_size):
+            batch_ids = product_ids[i:i + sales_batch_size]
+            sales_response = supabase.table("graded_sales")\
+                .select("product_id, grade, sale_date, price")\
+                .in_("product_id", batch_ids)\
+                .order("sale_date", desc=True)\
+                .limit(5000)\
+                .execute()
+            sales_data.extend(sales_response.data)
+
+        # Build sales lookup: {product_id: {grade: [{"date": ..., "price": ...}, ...]}} capped at 100 per grade
+        sales_lookup = {}
+        for sale in sales_data:
+            pid = sale['product_id']
+            grade = sale['grade']
+            if pid not in sales_lookup:
+                sales_lookup[pid] = {}
+            if grade not in sales_lookup[pid]:
+                sales_lookup[pid][grade] = []
+            if len(sales_lookup[pid][grade]) < 100:
+                sales_lookup[pid][grade].append({
+                    "date": sale['sale_date'],
+                    "price": float(sale['price']),
+                })
+
         # Build cards array
         cards = []
         for product in products:
@@ -164,6 +192,11 @@ def export_to_app_format(game="pokemon"):
             image_url = product.get('image') or image_lookup.get(variant_key)
             if image_url:
                 card["image"] = image_url
+
+            # Add graded sales history (only when present, keyed by grade number as string)
+            product_sales = sales_lookup.get(product_id)
+            if product_sales:
+                card["grade_sales"] = {str(k): v for k, v in product_sales.items()}
 
             cards.append(card)
 

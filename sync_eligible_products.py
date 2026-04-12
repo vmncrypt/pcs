@@ -20,48 +20,100 @@ LOG_PREFIX_COLLISION = "[URL_COLLISION]"
 LOG_PREFIX_EXCLUDED = "[EXCLUDED]"
 
 
-def fetch_all_eligible_products():
+GAME_CATEGORY_IDS = {
+    "pokemon":   None,  # NULL in DB = English Pokemon
+    "magic":     1,
+    "yugioh":    2,
+    "one-piece": 3,
+}
+
+
+def fetch_group_ids_for_game(category_id):
     """
-    Fetch ALL products that have market_price >= 15.
+    Return all group IDs belonging to a specific game category.
+    category_id=None fetches groups WHERE category_id IS NULL (English Pokemon).
+    """
+    print(f"🔍 Fetching group IDs for category_id={category_id}...")
+    group_ids = []
+    offset = 0
+    limit = 1000
+
+    while True:
+        query = supabase.table("groups").select("id")
+        if category_id is None:
+            query = query.is_("category_id", "null")
+        else:
+            query = query.eq("category_id", category_id)
+        response = query.range(offset, offset + limit - 1).execute()
+        if not response.data:
+            break
+        group_ids.extend(r["id"] for r in response.data)
+        if len(response.data) < limit:
+            break
+        offset += limit
+
+    print(f"   Found {len(group_ids):,} groups for this game")
+    return group_ids
+
+
+def fetch_all_eligible_products(game=None):
+    """
+    Fetch all products with market_price >= 15.
+    If game is specified, only fetches products belonging to that game's groups.
     Uses cursor-based pagination with id > last_id to ensure all rows are fetched.
-    
+
     Returns list of product dicts with id, name, and pricecharting_url.
     """
     eligible_products = []
     limit = 1000
     last_id = ""  # Empty string sorts before all UUIDs
 
-    print("🔍 Fetching all eligible products from database...")
-    print("   Using SQL filter: market_price >= 15")
+    # Resolve group IDs when filtering by game
+    group_ids = None
+    if game is not None:
+        category_id = GAME_CATEGORY_IDS[game]
+        group_ids = fetch_group_ids_for_game(category_id)
+        if not group_ids:
+            print(f"\n⚠️  No groups found for game '{game}'")
+            return []
+
+    print("🔍 Fetching eligible products from database...")
+    print(f"   Filter: market_price >= 15{f', game={game}' if game else ' (all games)'}")
     print("   Using cursor-based pagination (id > last_id)")
 
-    while True:
-        query = (
-            supabase.table("products")
-            .select("id, name, pricecharting_url, variant_key, market_price, rarity, number")
-            .gte("market_price", 15)
-            .order("id", desc=False)
-            .limit(limit)
-        )
-        
-        # Add cursor filter if we have a last_id
-        if last_id:
-            query = query.gt("id", last_id)
-        
-        response = query.execute()
+    # Process group_ids in batches of 500 to stay within Supabase URL limits
+    group_id_batches = []
+    if group_ids is not None:
+        batch_size = 500
+        group_id_batches = [group_ids[i:i+batch_size] for i in range(0, len(group_ids), batch_size)]
+    else:
+        group_id_batches = [None]  # sentinel: no group filter
 
-        if not response.data:
-            break
+    for batch in group_id_batches:
+        last_id = ""
+        while True:
+            query = (
+                supabase.table("products")
+                .select("id, name, pricecharting_url, variant_key, market_price, rarity, number")
+                .gte("market_price", 15)
+                .order("id", desc=False)
+                .limit(limit)
+            )
+            if batch is not None:
+                query = query.in_("group_id", batch)
+            if last_id:
+                query = query.gt("id", last_id)
 
-        eligible_products.extend(response.data)
-        
-        # Update cursor to last ID in this batch
-        last_id = response.data[-1]["id"]
+            response = query.execute()
+            if not response.data:
+                break
 
-        print(f"      Fetched {len(eligible_products):,} products so far (cursor: {last_id[:8]}...)...")
+            eligible_products.extend(response.data)
+            last_id = response.data[-1]["id"]
+            print(f"      Fetched {len(eligible_products):,} products so far...")
 
-        if len(response.data) < limit:
-            break
+            if len(response.data) < limit:
+                break
 
     print(f"\n✅ Found {len(eligible_products):,} eligible products total")
     return eligible_products
@@ -254,19 +306,26 @@ def main():
     
     parser = argparse.ArgumentParser(description="Sync eligible products to product_grade_progress table")
     parser.add_argument("--local", action="store_true", help="Local development mode - writes collisions to url_collisions.txt")
+    parser.add_argument(
+        "--game",
+        choices=list(GAME_CATEGORY_IDS.keys()),
+        default=None,
+        help="Only queue products for this game (default: all games)",
+    )
     args = parser.parse_args()
-    
+
     print("🚀 PriceCharting - Sync Eligible Products")
     print("=" * 60)
     if args.local:
         print("   Mode: LOCAL DEVELOPMENT (collisions will be saved to file)")
     print("\nCriteria:")
-    print("  • market_price >= 15")
+    print(f"  • market_price >= 15")
+    print(f"  • Game: {args.game or 'all'}")
     print("  • No pricecharting_url collision with other products")
     print()
 
-    # Fetch all eligible products with cursor-based pagination
-    eligible_products = fetch_all_eligible_products()
+    # Fetch eligible products, optionally filtered by game
+    eligible_products = fetch_all_eligible_products(game=args.game)
 
     if not eligible_products:
         print("\n⚠️  No eligible products found!")

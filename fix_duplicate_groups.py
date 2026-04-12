@@ -22,6 +22,9 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # (old_names_to_merge, canonical_name)
 # All old groups will be merged into canonical, then deleted.
 MERGES = [
+    # Ascended Heroes — merge empty "Pokemon"-prefixed duplicate into canonical
+    (["Pokemon Ascended Heroes"],            "Ascended Heroes"),
+
     # Empty duplicate groups — just delete them
     (["Pokemon Chinese 151 Collect"],       "Pokemon Chinese 151 Collect"),  # keep the 308-card one
     (["Pokemon Japanese Nihil Zero"],       "Pokemon Japanese Nihil Zero"),  # keep the 120-card one

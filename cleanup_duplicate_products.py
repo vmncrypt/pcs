@@ -29,7 +29,7 @@ AFFECTED_GROUPS = [
     "Pokemon Evolving Skies",
     "Pokemon Obsidian Flames",
     "Pokemon Scarlet & Violet 151",
-    "Pokemon Ascended Heroes",
+    "Ascended Heroes",
     "Pokemon Japanese Inferno X",
     "Pokemon Japanese Mega Dream ex",
     "Pokemon Japanese Nihil Zero",

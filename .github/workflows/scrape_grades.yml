@@ -4,7 +4,19 @@ on:
   schedule:
     # Run every 5 days at 2 AM UTC
     - cron: '0 2 */5 * *'
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      game:
+        description: 'Only scrape this game (leave empty to scrape all games)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - pokemon
+          - magic
+          - yugioh
+          - one-piece
 
 jobs:
   # Job 1: Sync eligible products (only runs once at start)
@@ -14,15 +26,15 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
 
     - name: Cache dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
@@ -39,7 +51,11 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         PYTHONUNBUFFERED: 1
       run: |
-        python -u sync_eligible_products.py
+        if [ -n "${{ github.event.inputs.game }}" ]; then
+          python -u sync_eligible_products.py --game ${{ github.event.inputs.game }}
+        else
+          python -u sync_eligible_products.py
+        fi
 
   # Job 2: Scrape batch 1 (runs after sync)
   scrape-batch-1:
@@ -49,15 +65,15 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
 
     - name: Cache dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
@@ -75,7 +91,4 @@ jobs:
         PYTHONUNBUFFERED: 1
       run: |
         # Run for ~3.8 hours with 2 second delay between requests
-        # This processes all 6,768 products in one batch
         timeout 19800s python -u process_db.py --batch-size 100 --delay 2.0 || true
-
-
